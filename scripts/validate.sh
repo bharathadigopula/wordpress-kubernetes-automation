@@ -37,6 +37,16 @@ if [[ "$image_digest_count" -ne 4 ]]; then
 fi
 
 #==============================================================================
+# K3S PROVISIONING VALIDATION
+#==============================================================================
+
+grep -Fq 'k3s_version=v1.36.4+k3s1' "$repository_root/scripts/manage.sh"
+grep -Fq "sha256sum --check --status" "$repository_root/scripts/manage.sh"
+grep -Fq 'sudo systemctl enable --now k3s' "$repository_root/scripts/manage.sh"
+grep -Fq 'if [[ "$action" == "deploy" ]]; then' "$repository_root/scripts/manage.sh"
+grep -Fq 'k3s_installation=required' "$repository_root/scripts/manage.sh"
+
+#==============================================================================
 # HELM VALIDATION
 #==============================================================================
 
