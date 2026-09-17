@@ -82,12 +82,35 @@ install_helm() {
 }
 
 validate_runtime() {
-  command -v curl >/dev/null
-  command -v jq >/dev/null
-  [[ -r "$repository_root/Chart.yaml" ]]
-  sudo test -r "$kubeconfig"
-  "${kubectl_command[@]}" version >/dev/null
-  "${kubectl_command[@]}" api-resources --api-group=networking.k8s.io | grep -Fq networkpolicies
+  local required_command
+  local network_resources
+
+  for required_command in curl jq sudo; do
+    if ! command -v "$required_command" >/dev/null; then
+      printf 'Required command is unavailable: %s\n' "$required_command" >&2
+      return 1
+    fi
+  done
+  if [[ ! -r "$repository_root/Chart.yaml" ]]; then
+    printf 'WordPress Helm chart is unreadable.\n' >&2
+    return 1
+  fi
+  if ! sudo test -r "$kubeconfig"; then
+    printf 'K3s kubeconfig is unreadable: %s\n' "$kubeconfig" >&2
+    return 1
+  fi
+  if ! "${kubectl_command[@]}" version >/dev/null; then
+    printf 'K3s API is unavailable.\n' >&2
+    return 1
+  fi
+  if ! network_resources=$("${kubectl_command[@]}" api-resources --api-group=networking.k8s.io); then
+    printf 'Kubernetes networking API discovery failed.\n' >&2
+    return 1
+  fi
+  if ! grep -Fq networkpolicies <<< "$network_resources"; then
+    printf 'Kubernetes NetworkPolicy API is unavailable.\n' >&2
+    return 1
+  fi
 }
 
 helm_values=(
