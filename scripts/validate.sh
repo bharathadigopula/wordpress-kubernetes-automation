@@ -49,9 +49,16 @@ if command -v helm >/dev/null 2>&1; then
     --set backup.restore.id=validation >/dev/null
 elif command -v docker >/dev/null 2>&1; then
   helm_image=alpine/helm:3.19.0@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9
-  docker run --rm --volume "$repository_root:/chart:ro" "$helm_image" lint /chart
-  docker run --rm --volume "$repository_root:/chart:ro" "$helm_image" template wordpress /chart --namespace wordpress >/dev/null
-  docker run --rm --volume "$repository_root:/chart:ro" "$helm_image" template wordpress /chart \
+  helm_chart=/chart
+  helm_mount=(--volume "$repository_root:/chart:ro")
+  if [[ -n "${JENKINS_CONTAINER_ID:-}" || -f /.dockerenv ]]; then
+    jenkins_container_id="${JENKINS_CONTAINER_ID:-${HOSTNAME:-}}"
+    helm_chart="$repository_root"
+    helm_mount=(--volumes-from "$jenkins_container_id" --workdir "$repository_root")
+  fi
+  docker run --rm "${helm_mount[@]}" "$helm_image" lint "$helm_chart"
+  docker run --rm "${helm_mount[@]}" "$helm_image" template wordpress "$helm_chart" --namespace wordpress >/dev/null
+  docker run --rm "${helm_mount[@]}" "$helm_image" template wordpress "$helm_chart" \
     --namespace wordpress --set backup.enabled=true \
     --set backup.restore.enabled=true --set backup.restore.id=validation >/dev/null
 else
