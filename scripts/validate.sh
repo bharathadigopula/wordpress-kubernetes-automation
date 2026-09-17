@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+#==============================================================================
+# WORDPRESS KUBERNETES REPOSITORY VALIDATION
+#==============================================================================
+
+set -euo pipefail
+
+#==============================================================================
+# REQUIRED FILE VALIDATION
+#==============================================================================
+
+repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+required_files=(Chart.yaml values.yaml scripts/bootstrap.sh scripts/manage.sh templates/backup-cronjob.yaml templates/restore-job.yaml templates/network-policies.yaml templates/nginx-configmap.yaml templates/wordpress-deployment.yaml templates/wordpress-service.yaml templates/wordpress-pvc.yaml templates/mariadb-statefulset.yaml templates/mariadb-service.yaml templates/ingress.yaml)
+for required_file in "${required_files[@]}"; do
+  [[ -f "$repository_root/$required_file" ]] || { printf 'Missing required file: %s\n' "$required_file" >&2; exit 1; }
+done
+
+#==============================================================================
+# SECRET AND IMAGE VALIDATION
+#==============================================================================
+
+if grep -R --line-number --extended-regexp '(password|secret|accessKey|access_key)[[:space:]]*:[[:space:]]*[^{$[:space:]\"]+' "$repository_root/values.yaml" "$repository_root/templates"; then
+  printf 'Potential literal secret detected in Helm configuration.\n' >&2
+  exit 1
+fi
+
+if grep -R --line-number --extended-regexp 'image:[[:space:]]+[^[:space:]]+:latest([[:space:]]|$)' "$repository_root/templates"; then
+  printf 'Container images must use pinned tags.\n' >&2
+  exit 1
+fi
+
+image_digest_count=$(grep -Ec '^[[:space:]]+digest:[[:space:]]+sha256:[[:xdigit:]]{64}$' "$repository_root/values.yaml")
+if [[ "$image_digest_count" -ne 4 ]]; then
+  printf 'WordPress, NGINX, MariaDB, and Restic images must use immutable SHA-256 digests.\n' >&2
+  exit 1
+fi
+
+#==============================================================================
+# HELM VALIDATION
+#==============================================================================
+
+if command -v helm >/dev/null 2>&1; then
+  helm lint "$repository_root"
+  helm template wordpress "$repository_root" --namespace wordpress >/dev/null
+  helm template wordpress "$repository_root" --namespace wordpress \
+    --set backup.enabled=true \
+    --set backup.restore.enabled=true \
+    --set backup.restore.id=validation >/dev/null
+elif command -v docker >/dev/null 2>&1; then
+  helm_image=alpine/helm:3.19.0@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9
+  docker run --rm --volume "$repository_root:/chart:ro" "$helm_image" lint /chart
+  docker run --rm --volume "$repository_root:/chart:ro" "$helm_image" template wordpress /chart --namespace wordpress >/dev/null
+  docker run --rm --volume "$repository_root:/chart:ro" "$helm_image" template wordpress /chart \
+    --namespace wordpress --set backup.enabled=true \
+    --set backup.restore.enabled=true --set backup.restore.id=validation >/dev/null
+else
+  printf 'Helm or Docker is required for chart validation.\n' >&2
+  exit 1
+fi
+
+printf 'wordpress_kubernetes_validation=ready\n'

@@ -1,0 +1,21 @@
+#==============================================================================
+# WORDPRESS APPLICATION SERVICE
+#==============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  labels:
+    app.kubernetes.io/name: wordpress
+    app.kubernetes.io/component: application
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: wordpress
+    app.kubernetes.io/component: application
+  ports:
+    - name: http
+      port: {{ .Values.wordpress.service.port }}
+      targetPort: http
+      protocol: TCP

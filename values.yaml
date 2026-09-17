@@ -1,0 +1,102 @@
+#==============================================================================
+# WORDPRESS KUBERNETES DEFAULT VALUES
+#==============================================================================
+
+nameOverride: wordpress
+
+imagePullSecrets: []
+
+wordpress:
+  image:
+    repository: wordpress
+    tag: 7.1.0-php8.5-fpm-alpine
+    digest: sha256:9ba798b17d7f3b4b1ab4997ef0edb4c029b8883e52e720fdf5c9100b193eda3e
+    pullPolicy: IfNotPresent
+  replicas: 1
+  service:
+    port: 80
+  persistence:
+    storageClass: ""
+    size: 15Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 750m
+      memory: 768Mi
+
+nginx:
+  image:
+    repository: nginxinc/nginx-unprivileged
+    tag: 1.29.4-alpine-slim
+    digest: sha256:93a0458087e8dd06e7e59ceaeb3c54c9e73f64730282ab9387c3fe47a42bfc99
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
+mariadb:
+  image:
+    repository: mariadb
+    tag: 12.3.3
+    digest: sha256:adbf5727f3d6ffa0ea11109f948247d88d110edd3f43f8d4c134c0a09060c5f3
+    pullPolicy: IfNotPresent
+  database: wordpress
+  username: wordpress
+  persistence:
+    storageClass: ""
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+
+secrets:
+  existingSecret: wordpress-secrets
+  wordpressDatabasePasswordKey: wordpress-database-password
+  mariadbRootPasswordKey: mariadb-root-password
+
+ingress:
+  enabled: true
+  className: traefik
+  hostname: wordpress.example.invalid
+  annotations: {}
+
+backup:
+  enabled: false
+  schedule: "17 2 * * *"
+  secretName: wordpress-backup-secrets
+  image:
+    repository: restic/restic
+    tag: 0.19.1
+    digest: sha256:136600b6ff6843d61d355f7f71f460a166429f35de6fd11b568fece3c9a4d510
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  retention:
+    daily: 7
+    weekly: 4
+    monthly: 6
+  restore:
+    enabled: false
+    id: ""
+    snapshot: latest
+
+podSecurityContext:
+  fsGroup: 33
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault

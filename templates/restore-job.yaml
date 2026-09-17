@@ -1,0 +1,112 @@
+#==============================================================================
+# WORDPRESS EXPLICIT RESTORE JOB
+#==============================================================================
+
+{{- if and .Values.backup.enabled .Values.backup.restore.enabled }}
+{{- required "backup.restore.id is required when restore is enabled" .Values.backup.restore.id }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wordpress-restore-{{ .Values.backup.restore.id | lower | replace "_" "-" }}
+  labels:
+    app.kubernetes.io/name: wordpress
+    app.kubernetes.io/component: restore
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: wordpress
+        app.kubernetes.io/component: restore
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 33
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: restic-restore
+          image: "{{ .Values.backup.image.repository }}:{{ .Values.backup.image.tag }}@{{ .Values.backup.image.digest }}"
+          imagePullPolicy: {{ .Values.backup.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              restic restore {{ .Values.backup.restore.snapshot | quote }} --target /restore
+              find /uploads -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+              cp -a /restore/uploads/. /uploads/
+          env:
+            - name: HOME
+              value: /tmp
+            - name: RESTIC_CACHE_DIR
+              value: /tmp/restic-cache
+          envFrom:
+            - secretRef:
+                name: {{ .Values.backup.secretName }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsGroup: 33
+            runAsNonRoot: true
+            runAsUser: 33
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: restore
+              mountPath: /restore
+            - name: restic-tmp
+              mountPath: /tmp
+            - name: uploads
+              mountPath: /uploads
+      containers:
+        - name: database-restore
+          image: "{{ .Values.mariadb.image.repository }}:{{ .Values.mariadb.image.tag }}@{{ .Values.mariadb.image.digest }}"
+          imagePullPolicy: {{ .Values.mariadb.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - mariadb --host=mariadb --user="${MARIADB_USER}" --password="${MARIADB_PASSWORD}" "${MARIADB_DATABASE}" < /restore/backup/database.sql
+          env:
+            - name: HOME
+              value: /tmp
+            - name: MARIADB_DATABASE
+              value: {{ .Values.mariadb.database | quote }}
+            - name: MARIADB_USER
+              value: {{ .Values.mariadb.username | quote }}
+            - name: MARIADB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: {{ .Values.secrets.wordpressDatabasePasswordKey }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsGroup: 999
+            runAsNonRoot: true
+            runAsUser: 999
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: restore
+              mountPath: /restore
+              readOnly: true
+            - name: database-tmp
+              mountPath: /tmp
+      volumes:
+        - name: database-tmp
+          emptyDir: {}
+        - name: restic-tmp
+          emptyDir: {}
+        - name: restore
+          emptyDir: {}
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: wordpress-uploads
+{{- end }}

@@ -1,0 +1,10 @@
+#==============================================================================
+# WORDPRESS KUBERNETES CHART
+#==============================================================================
+
+apiVersion: v2
+name: wordpress
+description: Provider-neutral WordPress and MariaDB Kubernetes deployment
+type: application
+version: 0.1.0
+appVersion: "7.1.0"
