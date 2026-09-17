@@ -23,6 +23,7 @@ registry_secrets="${10:-}"
 namespace=wordpress
 release=wordpress
 kubeconfig=/etc/rancher/k3s/k3s.yaml
+k3s_version=v1.36.4+k3s1
 repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 case "$action" in
@@ -45,8 +46,80 @@ fi
 # KUBERNETES AND HELM COMMANDS
 #==============================================================================
 
-kubectl_command=(sudo k3s kubectl --kubeconfig "$kubeconfig")
+kubectl_command=(sudo /usr/local/bin/k3s kubectl --kubeconfig "$kubeconfig")
 helm_command=(sudo env KUBECONFIG="$kubeconfig" /usr/local/bin/helm)
+
+install_k3s() {
+  local architecture checksum download_name temporary_binary
+
+  if sudo test -r "$kubeconfig"; then
+    return
+  fi
+  if sudo systemctl is-active --quiet k3s; then
+    printf 'K3s service is active without a readable kubeconfig.\n' >&2
+    exit 1
+  fi
+
+  architecture=$(uname -m)
+  case "$architecture" in
+    aarch64|arm64)
+      checksum=c920706346d5ad4e5cd3c7bf1bb09ce71ebe07fec829e513e40f1caf98aed8bb
+      download_name=k3s-arm64
+      ;;
+    x86_64|amd64)
+      checksum=835873f37245fc615f547a2fe2af9402a347875f13fa64a1f136de644955ea3f
+      download_name=k3s
+      ;;
+    *)
+      printf 'Unsupported K3s architecture: %s\n' "$architecture" >&2
+      exit 1
+      ;;
+  esac
+
+  temporary_binary=$(mktemp)
+  trap 'rm -f "$temporary_binary"' RETURN
+  curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+    "https://github.com/k3s-io/k3s/releases/download/${k3s_version/+/%2B}/${download_name}" \
+    --output "$temporary_binary"
+  printf '%s  %s\n' "$checksum" "$temporary_binary" | sha256sum --check --status
+  sudo install -o root -g root -m 0755 "$temporary_binary" /usr/local/bin/k3s
+  sudo install -d -o root -g root -m 0755 /etc/rancher/k3s
+  sudo tee /etc/systemd/system/k3s.service >/dev/null <<'EOF'
+[Unit]
+Description=Lightweight Kubernetes
+Documentation=https://k3s.io
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=notify
+Environment=K3S_KUBECONFIG_MODE=600
+ExecStart=/usr/local/bin/k3s server
+KillMode=process
+Delegate=yes
+LimitNOFILE=1048576
+LimitNPROC=infinity
+TasksMax=infinity
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now k3s
+
+  for _ in {1..90}; do
+    if sudo test -r "$kubeconfig" && "${kubectl_command[@]}" get --raw=/readyz >/dev/null 2>&1; then
+      printf 'k3s_installation=ready\n'
+      return
+    fi
+    sleep 2
+  done
+  sudo systemctl status k3s --no-pager || true
+  printf 'K3s did not become ready.\n' >&2
+  exit 1
+}
 
 install_helm() {
   local architecture checksum archive temporary_directory
@@ -85,7 +158,7 @@ validate_runtime() {
   local required_command
   local network_resources
 
-  for required_command in curl jq sudo; do
+  for required_command in curl jq sha256sum sudo systemctl; do
     if ! command -v "$required_command" >/dev/null; then
       printf 'Required command is unavailable: %s\n' "$required_command" >&2
       return 1
@@ -96,7 +169,15 @@ validate_runtime() {
     return 1
   fi
   if ! sudo test -r "$kubeconfig"; then
+    if [[ "$action" == "validate" ]] && ! sudo systemctl is-active --quiet k3s; then
+      printf 'k3s_installation=required\n'
+      return
+    fi
     printf 'K3s kubeconfig is unreadable: %s\n' "$kubeconfig" >&2
+    return 1
+  fi
+  if ! sudo test -x /usr/local/bin/k3s; then
+    printf 'K3s binary is unavailable: /usr/local/bin/k3s\n' >&2
     return 1
   fi
   if ! "${kubectl_command[@]}" version >/dev/null; then
@@ -150,6 +231,9 @@ reconcile_secrets() {
 # LIFECYCLE ACTIONS
 #==============================================================================
 
+if [[ "$action" == "deploy" ]]; then
+  install_k3s
+fi
 validate_runtime
 
 case "$action" in
