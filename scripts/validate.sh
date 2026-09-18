@@ -43,7 +43,7 @@ fi
 grep -Fq 'k3s_version=v1.36.4+k3s1' "$repository_root/scripts/manage.sh"
 grep -Fq "sha256sum --check --status" "$repository_root/scripts/manage.sh"
 grep -Fq 'sudo systemctl enable --now k3s' "$repository_root/scripts/manage.sh"
-grep -Fq 'if [[ "$action" == "deploy" ]]; then' "$repository_root/scripts/manage.sh"
+grep -Fq "if [[ \"\$action\" == \"deploy\" ]]; then" "$repository_root/scripts/manage.sh"
 grep -Fq 'k3s_installation=required' "$repository_root/scripts/manage.sh"
 
 #==============================================================================
@@ -73,6 +73,13 @@ elif command -v docker >/dev/null 2>&1; then
     --set backup.restore.enabled=true --set backup.restore.id=validation >/dev/null
 else
   printf 'Helm or Docker is required for chart validation.\n' >&2
+  exit 1
+fi
+
+if [[ "$(grep -Fc 'apply -f - >/dev/null' "$repository_root/scripts/manage.sh")" != "4" ]] || \
+  ! grep -Fq -- '--set imagePullSecrets[0].name=wordpress-registry >/dev/null' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'rollout status deployment/wordpress --timeout=10m >/dev/null' "$repository_root/scripts/manage.sh"; then
+  printf 'Deployment success output must preserve the OCI readiness marker.\n' >&2
   exit 1
 fi
 

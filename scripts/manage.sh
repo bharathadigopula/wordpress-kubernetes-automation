@@ -209,22 +209,22 @@ reconcile_secrets() {
   jq -e 'type == "object" and (.RESTIC_REPOSITORY | strings | length > 0) and (.RESTIC_PASSWORD | strings | length >= 24) and (.AWS_ACCESS_KEY_ID | strings | length > 0) and (.AWS_SECRET_ACCESS_KEY | strings | length > 0)' <<< "$backup_secrets" >/dev/null
   jq -e 'type == "object" and (.username | strings | length > 0) and (.token | strings | length >= 20)' <<< "$registry_secrets" >/dev/null
 
-  "${kubectl_command[@]}" create namespace "$namespace" --dry-run=client -o yaml | "${kubectl_command[@]}" apply -f -
+  "${kubectl_command[@]}" create namespace "$namespace" --dry-run=client -o yaml | "${kubectl_command[@]}" apply -f - >/dev/null
   "${kubectl_command[@]}" --namespace "$namespace" create secret generic wordpress-secrets \
     --from-literal="wordpress-database-password=$(jq -r .wordpress_database_password <<< "$database_secrets")" \
     --from-literal="mariadb-root-password=$(jq -r .mariadb_root_password <<< "$database_secrets")" \
-    --dry-run=client -o yaml | "${kubectl_command[@]}" apply -f -
+    --dry-run=client -o yaml | "${kubectl_command[@]}" apply -f - >/dev/null
   "${kubectl_command[@]}" --namespace "$namespace" create secret generic wordpress-backup-secrets \
     --from-literal="RESTIC_REPOSITORY=$(jq -r .RESTIC_REPOSITORY <<< "$backup_secrets")" \
     --from-literal="RESTIC_PASSWORD=$(jq -r .RESTIC_PASSWORD <<< "$backup_secrets")" \
     --from-literal="AWS_ACCESS_KEY_ID=$(jq -r .AWS_ACCESS_KEY_ID <<< "$backup_secrets")" \
     --from-literal="AWS_SECRET_ACCESS_KEY=$(jq -r .AWS_SECRET_ACCESS_KEY <<< "$backup_secrets")" \
-    --dry-run=client -o yaml | "${kubectl_command[@]}" apply -f -
+    --dry-run=client -o yaml | "${kubectl_command[@]}" apply -f - >/dev/null
   "${kubectl_command[@]}" --namespace "$namespace" create secret docker-registry wordpress-registry \
     --docker-server=ghcr.io \
     --docker-username="$(jq -r .username <<< "$registry_secrets")" \
     --docker-password="$(jq -r .token <<< "$registry_secrets")" \
-    --dry-run=client -o yaml | "${kubectl_command[@]}" apply -f -
+    --dry-run=client -o yaml | "${kubectl_command[@]}" apply -f - >/dev/null
 }
 
 #==============================================================================
@@ -255,8 +255,8 @@ case "$action" in
       --set-string wordpress.image.repository="$image_repository" \
       --set-string wordpress.image.tag="$image_tag" \
       --set-string wordpress.image.digest="$image_digest" \
-      --set imagePullSecrets[0].name=wordpress-registry
-    "${kubectl_command[@]}" --namespace "$namespace" rollout status deployment/wordpress --timeout=10m
+      --set imagePullSecrets[0].name=wordpress-registry >/dev/null
+    "${kubectl_command[@]}" --namespace "$namespace" rollout status deployment/wordpress --timeout=10m >/dev/null
     printf 'wordpress_deploy=ready\n'
     ;;
   backup)
