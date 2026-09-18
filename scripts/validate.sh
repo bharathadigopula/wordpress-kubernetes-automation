@@ -83,4 +83,9 @@ if [[ "$(grep -Fc 'apply -f - >/dev/null' "$repository_root/scripts/manage.sh")"
   exit 1
 fi
 
+if ! grep -Fq 'get deployment,statefulset,service,ingress,cronjob,networkpolicy >/dev/null' "$repository_root/scripts/manage.sh"; then
+  printf 'Status success output must preserve the OCI readiness marker.\n' >&2
+  exit 1
+fi
+
 printf 'wordpress_kubernetes_validation=ready\n'
