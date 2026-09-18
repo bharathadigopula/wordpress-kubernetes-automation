@@ -260,6 +260,7 @@ case "$action" in
     "${kubectl_command[@]}" --namespace "$namespace" rollout status deployment/wordpress --timeout=10m >/dev/null
     "${kubectl_command[@]}" --namespace "$namespace" exec deployment/wordpress -c wordpress -- sh -c '
       test -d /usr/src/wordpress/wp-content/themes/bharathcoudops
+      mkdir -p /var/www/html/wp-content/themes
       rm -rf /var/www/html/wp-content/themes/.bharathcoudops.next
       cp -a /usr/src/wordpress/wp-content/themes/bharathcoudops /var/www/html/wp-content/themes/.bharathcoudops.next
       rm -rf /var/www/html/wp-content/themes/bharathcoudops
