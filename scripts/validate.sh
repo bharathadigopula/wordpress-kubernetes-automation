@@ -82,6 +82,13 @@ if ! grep -Fq "\$_SERVER['HTTPS'] = 'on';" "$repository_root/templates/wordpress
   exit 1
 fi
 
+if ! grep -Fq 'until mariadb-dump --host=mariadb' "$repository_root/templates/backup-cronjob.yaml" || \
+  ! grep -Fq "if [ \"\$attempt\" -ge 30 ]; then" "$repository_root/templates/backup-cronjob.yaml" || \
+  ! grep -Fq 'sleep 5' "$repository_root/templates/backup-cronjob.yaml"; then
+  printf 'WordPress backup must tolerate transient database connectivity.\n' >&2
+  exit 1
+fi
+
 if ! grep -Fq 'name: prepare-wordpress-webroot' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'mkdir -p /var/www/html/wp-content/themes && chown 33:33 /var/www/html/wp-content && chown -R 33:33 /var/www/html/wp-content/themes' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'runAsUser: 0' "$repository_root/templates/wordpress-deployment.yaml" || \
