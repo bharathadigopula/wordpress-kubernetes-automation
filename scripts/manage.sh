@@ -258,6 +258,13 @@ case "$action" in
       --set-string wordpress.image.digest="$image_digest" \
       --set imagePullSecrets[0].name=wordpress-registry >/dev/null
     "${kubectl_command[@]}" --namespace "$namespace" rollout status deployment/wordpress --timeout=10m >/dev/null
+    "${kubectl_command[@]}" --namespace "$namespace" exec deployment/wordpress -c wordpress -- sh -c '
+      test -d /usr/src/wordpress/wp-content/themes/bharathcoudops
+      rm -rf /var/www/html/wp-content/themes/.bharathcoudops.next
+      cp -a /usr/src/wordpress/wp-content/themes/bharathcoudops /var/www/html/wp-content/themes/.bharathcoudops.next
+      rm -rf /var/www/html/wp-content/themes/bharathcoudops
+      mv /var/www/html/wp-content/themes/.bharathcoudops.next /var/www/html/wp-content/themes/bharathcoudops
+    ' >/dev/null
     "${kubectl_command[@]}" --namespace "$namespace" exec -i deployment/wordpress -c wordpress -- php >/dev/null <<'PHP'
 <?php
   define('WP_INSTALLING', true);

@@ -79,6 +79,8 @@ fi
 if [[ "$(grep -Fc 'apply -f - >/dev/null' "$repository_root/scripts/manage.sh")" != "4" ]] || \
   ! grep -Fq -- '--set imagePullSecrets[0].name=wordpress-registry >/dev/null' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'rollout status deployment/wordpress --timeout=10m >/dev/null' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'cp -a /usr/src/wordpress/wp-content/themes/bharathcoudops /var/www/html/wp-content/themes/.bharathcoudops.next' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'mv /var/www/html/wp-content/themes/.bharathcoudops.next /var/www/html/wp-content/themes/bharathcoudops' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "exec -i deployment/wordpress -c wordpress -- php >/dev/null" "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "define('WP_INSTALLING', true);" "$repository_root/scripts/manage.sh" || \
   [[ "$(grep -Fc "if (!is_blog_installed())" "$repository_root/scripts/manage.sh")" != "2" ]] || \
