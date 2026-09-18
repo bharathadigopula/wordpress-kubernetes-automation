@@ -32,6 +32,29 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: prepare-wordpress-webroot
+          image: "{{ .Values.wordpress.image.repository }}:{{ .Values.wordpress.image.tag }}@{{ .Values.wordpress.image.digest }}"
+          imagePullPolicy: {{ .Values.wordpress.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - mkdir -p /var/www/html/wp-content/themes && chown 33:33 /var/www/html/wp-content /var/www/html/wp-content/themes
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: false
+            runAsUser: 0
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: webroot
+              mountPath: /var/www/html
       containers:
         - name: wordpress
           image: "{{ .Values.wordpress.image.repository }}:{{ .Values.wordpress.image.tag }}@{{ .Values.wordpress.image.digest }}"

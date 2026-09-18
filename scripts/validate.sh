@@ -76,6 +76,14 @@ else
   exit 1
 fi
 
+if ! grep -Fq 'name: prepare-wordpress-webroot' "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq 'mkdir -p /var/www/html/wp-content/themes && chown 33:33 /var/www/html/wp-content /var/www/html/wp-content/themes' "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq 'runAsUser: 0' "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq -- '- CHOWN' "$repository_root/templates/wordpress-deployment.yaml"; then
+  printf 'WordPress deployment must prepare the writable theme directory.\n' >&2
+  exit 1
+fi
+
 if [[ "$(grep -Fc 'apply -f - >/dev/null' "$repository_root/scripts/manage.sh")" != "4" ]] || \
   ! grep -Fq -- '--set imagePullSecrets[0].name=wordpress-registry >/dev/null' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'rollout status deployment/wordpress --timeout=10m >/dev/null' "$repository_root/scripts/manage.sh" || \
