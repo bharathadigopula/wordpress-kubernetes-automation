@@ -205,7 +205,7 @@ helm_values=(
 #==============================================================================
 
 reconcile_secrets() {
-  jq -e 'type == "object" and (.wordpress_database_password | strings | length >= 24) and (.mariadb_root_password | strings | length >= 24)' <<< "$database_secrets" >/dev/null
+  jq -e 'type == "object" and (.wordpress_database_password | strings | length >= 24) and (.mariadb_root_password | strings | length >= 24) and (.wordpress_admin_password | strings | length >= 24)' <<< "$database_secrets" >/dev/null
   jq -e 'type == "object" and (.RESTIC_REPOSITORY | strings | length > 0) and (.RESTIC_PASSWORD | strings | length >= 24) and (.AWS_ACCESS_KEY_ID | strings | length > 0) and (.AWS_SECRET_ACCESS_KEY | strings | length > 0)' <<< "$backup_secrets" >/dev/null
   jq -e 'type == "object" and (.username | strings | length > 0) and (.token | strings | length >= 20)' <<< "$registry_secrets" >/dev/null
 
@@ -213,6 +213,7 @@ reconcile_secrets() {
   "${kubectl_command[@]}" --namespace "$namespace" create secret generic wordpress-secrets \
     --from-literal="wordpress-database-password=$(jq -r .wordpress_database_password <<< "$database_secrets")" \
     --from-literal="mariadb-root-password=$(jq -r .mariadb_root_password <<< "$database_secrets")" \
+    --from-literal="wordpress-admin-password=$(jq -r .wordpress_admin_password <<< "$database_secrets")" \
     --dry-run=client -o yaml | "${kubectl_command[@]}" apply -f - >/dev/null
   "${kubectl_command[@]}" --namespace "$namespace" create secret generic wordpress-backup-secrets \
     --from-literal="RESTIC_REPOSITORY=$(jq -r .RESTIC_REPOSITORY <<< "$backup_secrets")" \
@@ -257,6 +258,28 @@ case "$action" in
       --set-string wordpress.image.digest="$image_digest" \
       --set imagePullSecrets[0].name=wordpress-registry >/dev/null
     "${kubectl_command[@]}" --namespace "$namespace" rollout status deployment/wordpress --timeout=10m >/dev/null
+    "${kubectl_command[@]}" --namespace "$namespace" exec -i deployment/wordpress -c wordpress -- php >/dev/null <<'PHP'
+<?php
+require '/var/www/html/wp-load.php';
+require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+if (!is_blog_installed()) {
+    $result = wp_install(
+        'BharathCoudOps',
+        getenv('WORDPRESS_ADMIN_USER'),
+        getenv('WORDPRESS_ADMIN_EMAIL'),
+        true,
+        '',
+        getenv('WORDPRESS_ADMIN_PASSWORD')
+    );
+    if (is_wp_error($result)) {
+        fwrite(STDERR, $result->get_error_message() . PHP_EOL);
+        exit(1);
+    }
+}
+
+switch_theme('bharathcoudops');
+PHP
     printf 'wordpress_deploy=ready\n'
     ;;
   backup)

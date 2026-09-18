@@ -63,6 +63,7 @@ secrets:
   existingSecret: wordpress-secrets
   wordpressDatabasePasswordKey: wordpress-database-password
   mariadbRootPasswordKey: mariadb-root-password
+  wordpressAdminPasswordKey: wordpress-admin-password
 
 ingress:
   enabled: true
