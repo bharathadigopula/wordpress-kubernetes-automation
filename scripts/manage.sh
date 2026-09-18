@@ -260,6 +260,7 @@ case "$action" in
     "${kubectl_command[@]}" --namespace "$namespace" rollout status deployment/wordpress --timeout=10m >/dev/null
     "${kubectl_command[@]}" --namespace "$namespace" exec -i deployment/wordpress -c wordpress -- php >/dev/null <<'PHP'
 <?php
+  define('WP_INSTALLING', true);
 require '/var/www/html/wp-load.php';
 require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
@@ -277,6 +278,12 @@ if (!is_blog_installed()) {
         exit(1);
     }
 }
+
+    wp_cache_flush();
+    if (!is_blog_installed()) {
+      fwrite(STDERR, "wordpress_initialization=failed reason=installation_postcondition" . PHP_EOL);
+      exit(1);
+    }
 
 switch_theme('bharathcoudops');
 PHP
