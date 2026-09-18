@@ -261,10 +261,11 @@ case "$action" in
     ;;
   backup)
     backup_job="wordpress-backup-${operation_id}"
-    "${kubectl_command[@]}" --namespace "$namespace" create job --from=cronjob/wordpress-backup "$backup_job"
-    "${kubectl_command[@]}" --namespace "$namespace" wait --for=condition=complete "job/$backup_job" --timeout=30m
-    "${kubectl_command[@]}" --namespace "$namespace" logs "job/$backup_job" --all-containers
+    "${kubectl_command[@]}" --namespace "$namespace" create job --from=cronjob/wordpress-backup "$backup_job" >/dev/null
+    "${kubectl_command[@]}" --namespace "$namespace" wait --for=condition=complete "job/$backup_job" --timeout=30m >/dev/null
+    backup_output=$("${kubectl_command[@]}" --namespace "$namespace" logs "job/$backup_job" --all-containers --tail=8)
     printf 'wordpress_backup=ready\n'
+    printf '%s\n' "$backup_output"
     ;;
   restore)
     restore_job="wordpress-restore-${operation_id}"

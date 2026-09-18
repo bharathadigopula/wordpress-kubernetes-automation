@@ -88,4 +88,11 @@ if ! grep -Fq 'get deployment,statefulset,service,ingress,cronjob,networkpolicy 
   exit 1
 fi
 
+if ! grep -Fq "create job --from=cronjob/wordpress-backup \"\$backup_job\" >/dev/null" "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq "wait --for=condition=complete \"job/\$backup_job\" --timeout=30m >/dev/null" "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq "logs \"job/\$backup_job\" --all-containers --tail=8" "$repository_root/scripts/manage.sh"; then
+  printf 'Backup success output must preserve the OCI readiness marker.\n' >&2
+  exit 1
+fi
+
 printf 'wordpress_kubernetes_validation=ready\n'
