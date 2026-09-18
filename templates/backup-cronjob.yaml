@@ -40,7 +40,16 @@ spec:
                 - /bin/sh
                 - -ec
               args:
-                - mariadb-dump --host=mariadb --user="${MARIADB_USER}" --password="${MARIADB_PASSWORD}" --single-transaction --quick --lock-tables=false "${MARIADB_DATABASE}" > /backup/database.sql
+                - |
+                  attempt=1
+                  until mariadb-dump --host=mariadb --user="${MARIADB_USER}" --password="${MARIADB_PASSWORD}" --single-transaction --quick --lock-tables=false "${MARIADB_DATABASE}" > /backup/database.sql; do
+                    rm -f /backup/database.sql
+                    if [ "$attempt" -ge 30 ]; then
+                      exit 1
+                    fi
+                    attempt=$((attempt + 1))
+                    sleep 5
+                  done
               env:
                 - name: HOME
                   value: /tmp
