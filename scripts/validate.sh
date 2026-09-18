@@ -76,6 +76,12 @@ else
   exit 1
 fi
 
+if ! grep -Fq "\$_SERVER['HTTPS'] = 'on';" "$repository_root/templates/wordpress-deployment.yaml" || \
+  grep -Fq "HTTP_X_FORWARDED_PROTO" "$repository_root/templates/wordpress-deployment.yaml"; then
+  printf 'WordPress must enforce HTTPS behind the production proxy chain.\n' >&2
+  exit 1
+fi
+
 if ! grep -Fq 'name: prepare-wordpress-webroot' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'mkdir -p /var/www/html/wp-content/themes && chown 33:33 /var/www/html/wp-content && chown -R 33:33 /var/www/html/wp-content/themes' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'runAsUser: 0' "$repository_root/templates/wordpress-deployment.yaml" || \
