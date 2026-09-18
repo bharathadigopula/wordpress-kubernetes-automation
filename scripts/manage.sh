@@ -285,7 +285,19 @@ if (!is_blog_installed()) {
       exit(1);
     }
 
-switch_theme('bharathcoudops');
+    $theme = 'bharathcoudops';
+    if (!is_dir(WP_CONTENT_DIR . '/themes/' . $theme)) {
+      fwrite(STDERR, "wordpress_initialization=failed reason=theme_missing" . PHP_EOL);
+      exit(1);
+    }
+
+    update_option('template', $theme);
+    update_option('stylesheet', $theme);
+    wp_cache_flush();
+    if (get_option('template') !== $theme || get_option('stylesheet') !== $theme) {
+      fwrite(STDERR, "wordpress_initialization=failed reason=theme_postcondition" . PHP_EOL);
+      exit(1);
+    }
 PHP
     printf 'wordpress_deploy=ready\n'
     ;;
