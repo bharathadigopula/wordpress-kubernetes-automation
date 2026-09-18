@@ -79,7 +79,8 @@ fi
 if ! grep -Fq 'name: prepare-wordpress-webroot' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'mkdir -p /var/www/html/wp-content/themes && chown 33:33 /var/www/html/wp-content && chown -R 33:33 /var/www/html/wp-content/themes && chmod -R u+rwX /var/www/html/wp-content/themes' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'runAsUser: 0' "$repository_root/templates/wordpress-deployment.yaml" || \
-  ! grep -Fq -- '- CHOWN' "$repository_root/templates/wordpress-deployment.yaml"; then
+  ! grep -Fq -- '- CHOWN' "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq -- '- FOWNER' "$repository_root/templates/wordpress-deployment.yaml"; then
   printf 'WordPress deployment must prepare the writable theme directory.\n' >&2
   exit 1
 fi
