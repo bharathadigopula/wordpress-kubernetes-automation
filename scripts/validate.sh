@@ -76,4 +76,11 @@ else
   exit 1
 fi
 
+if [[ "$(grep -Fc 'apply -f - >/dev/null' "$repository_root/scripts/manage.sh")" != "4" ]] || \
+  ! grep -Fq -- '--set imagePullSecrets[0].name=wordpress-registry >/dev/null' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'rollout status deployment/wordpress --timeout=10m >/dev/null' "$repository_root/scripts/manage.sh"; then
+  printf 'Deployment success output must preserve the OCI readiness marker.\n' >&2
+  exit 1
+fi
+
 printf 'wordpress_kubernetes_validation=ready\n'
