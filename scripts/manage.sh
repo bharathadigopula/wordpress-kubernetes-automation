@@ -262,7 +262,7 @@ case "$action" in
       test -d /usr/src/wordpress/wp-content/themes/bharathcoudops
       mkdir -p /var/www/html/wp-content/themes
       rm -rf /var/www/html/wp-content/themes/.bharathcoudops.next
-      cp -a /usr/src/wordpress/wp-content/themes/bharathcoudops /var/www/html/wp-content/themes/.bharathcoudops.next
+      cp -R /usr/src/wordpress/wp-content/themes/bharathcoudops /var/www/html/wp-content/themes/.bharathcoudops.next
       rm -rf /var/www/html/wp-content/themes/bharathcoudops
       mv /var/www/html/wp-content/themes/.bharathcoudops.next /var/www/html/wp-content/themes/bharathcoudops
     ' >/dev/null
