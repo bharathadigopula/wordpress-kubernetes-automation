@@ -59,6 +59,15 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secrets.existingSecret }}
                   key: {{ .Values.secrets.wordpressDatabasePasswordKey }}
+            - name: WORDPRESS_ADMIN_USER
+              value: bharathcloudops-admin
+            - name: WORDPRESS_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: {{ .Values.secrets.wordpressAdminPasswordKey }}
+            - name: WORDPRESS_ADMIN_EMAIL
+              value: wordpress@bharathcloudops.com
             - name: WORDPRESS_CONFIG_EXTRA
               value: |
                 if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
