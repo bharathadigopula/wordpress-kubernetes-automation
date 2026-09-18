@@ -93,9 +93,7 @@ spec:
               value: wordpress@bharathcloudops.com
             - name: WORDPRESS_CONFIG_EXTRA
               value: |
-                if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
-                    $_SERVER['HTTPS'] = 'on';
-                }
+                $_SERVER['HTTPS'] = 'on';
                 define('WP_HOME', 'https://{{ .Values.ingress.hostname }}');
                 define('WP_SITEURL', 'https://{{ .Values.ingress.hostname }}');
                 define('DISALLOW_FILE_EDIT', true);
