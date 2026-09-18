@@ -290,7 +290,7 @@ case "$action" in
     printf 'wordpress_restore=ready\n'
     ;;
   status)
-    "${kubectl_command[@]}" --namespace "$namespace" get deployment,statefulset,service,ingress,cronjob,networkpolicy
+    "${kubectl_command[@]}" --namespace "$namespace" get deployment,statefulset,service,ingress,cronjob,networkpolicy >/dev/null
     printf 'wordpress_status=ready\n'
     ;;
 esac
