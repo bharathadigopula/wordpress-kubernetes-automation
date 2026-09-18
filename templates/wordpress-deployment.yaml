@@ -39,7 +39,7 @@ spec:
           command:
             - /bin/sh
             - -c
-            - mkdir -p /var/www/html/wp-content/themes && chown 33:33 /var/www/html/wp-content /var/www/html/wp-content/themes
+            - mkdir -p /var/www/html/wp-content/themes && chown 33:33 /var/www/html/wp-content && chown -R 33:33 /var/www/html/wp-content/themes
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
