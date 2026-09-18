@@ -261,6 +261,7 @@ case "$action" in
     "${kubectl_command[@]}" --namespace "$namespace" exec deployment/wordpress -c wordpress -- sh -c '
       test -d /usr/src/wordpress/wp-content/themes/bharathcoudops
       mkdir -p /var/www/html/wp-content/themes
+      chmod -R u+rwX /var/www/html/wp-content/themes
       rm -rf /var/www/html/wp-content/themes/.bharathcoudops.next
       cp -R /usr/src/wordpress/wp-content/themes/bharathcoudops /var/www/html/wp-content/themes/.bharathcoudops.next
       rm -rf /var/www/html/wp-content/themes/bharathcoudops
