@@ -83,7 +83,9 @@ if [[ "$(grep -Fc 'apply -f - >/dev/null' "$repository_root/scripts/manage.sh")"
   ! grep -Fq "define('WP_INSTALLING', true);" "$repository_root/scripts/manage.sh" || \
   [[ "$(grep -Fc "if (!is_blog_installed())" "$repository_root/scripts/manage.sh")" != "2" ]] || \
   ! grep -Fq 'wordpress_initialization=failed reason=installation_postcondition' "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq "switch_theme('bharathcoudops')" "$repository_root/scripts/manage.sh"; then
+  ! grep -Fq "update_option('template', \$theme)" "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq "update_option('stylesheet', \$theme)" "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'wordpress_initialization=failed reason=theme_postcondition' "$repository_root/scripts/manage.sh"; then
   printf 'Deployment success output must preserve the OCI readiness marker.\n' >&2
   exit 1
 fi
