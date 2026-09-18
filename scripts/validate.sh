@@ -77,7 +77,7 @@ else
 fi
 
 if ! grep -Fq 'name: prepare-wordpress-webroot' "$repository_root/templates/wordpress-deployment.yaml" || \
-  ! grep -Fq 'mkdir -p /var/www/html/wp-content/themes && chown 33:33 /var/www/html/wp-content /var/www/html/wp-content/themes' "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq 'mkdir -p /var/www/html/wp-content/themes && chown 33:33 /var/www/html/wp-content && chown -R 33:33 /var/www/html/wp-content/themes' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'runAsUser: 0' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq -- '- CHOWN' "$repository_root/templates/wordpress-deployment.yaml"; then
   printf 'WordPress deployment must prepare the writable theme directory.\n' >&2
@@ -88,7 +88,7 @@ if [[ "$(grep -Fc 'apply -f - >/dev/null' "$repository_root/scripts/manage.sh")"
   ! grep -Fq -- '--set imagePullSecrets[0].name=wordpress-registry >/dev/null' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'rollout status deployment/wordpress --timeout=10m >/dev/null' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'mkdir -p /var/www/html/wp-content/themes' "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq 'cp -a /usr/src/wordpress/wp-content/themes/bharathcoudops /var/www/html/wp-content/themes/.bharathcoudops.next' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'cp -R /usr/src/wordpress/wp-content/themes/bharathcoudops /var/www/html/wp-content/themes/.bharathcoudops.next' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'mv /var/www/html/wp-content/themes/.bharathcoudops.next /var/www/html/wp-content/themes/bharathcoudops' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "exec -i deployment/wordpress -c wordpress -- php >/dev/null" "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "define('WP_INSTALLING', true);" "$repository_root/scripts/manage.sh" || \
