@@ -18,6 +18,7 @@ wordpress:
   persistence:
     storageClass: ""
     size: 15Gi
+    extensionsSize: 5Gi
   resources:
     requests:
       cpu: 100m

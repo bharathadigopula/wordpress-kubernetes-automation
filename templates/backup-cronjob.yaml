@@ -86,7 +86,7 @@ spec:
               args:
                 - |
                   restic snapshots >/dev/null 2>&1 || restic init
-                  restic backup --tag wordpress /backup/database.sql /uploads
+                  restic backup --tag wordpress /backup/database.sql /extensions /uploads
                   restic forget --tag wordpress --keep-daily {{ .Values.backup.retention.daily }} --keep-weekly {{ .Values.backup.retention.weekly }} --keep-monthly {{ .Values.backup.retention.monthly }} --prune
               env:
                 - name: HOME
@@ -116,6 +116,9 @@ spec:
                 - name: uploads
                   mountPath: /uploads
                   readOnly: true
+                - name: extensions
+                  mountPath: /extensions
+                  readOnly: true
           volumes:
             - name: backup
               emptyDir: {}
@@ -126,4 +129,7 @@ spec:
             - name: uploads
               persistentVolumeClaim:
                 claimName: wordpress-uploads
+            - name: extensions
+              persistentVolumeClaim:
+                claimName: wordpress-extensions
 {{- end }}

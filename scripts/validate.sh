@@ -11,7 +11,7 @@ set -euo pipefail
 #==============================================================================
 
 repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-required_files=(Chart.yaml values.yaml scripts/bootstrap.sh scripts/manage.sh templates/backup-cronjob.yaml templates/restore-job.yaml templates/network-policies.yaml templates/nginx-configmap.yaml templates/wordpress-deployment.yaml templates/wordpress-service.yaml templates/wordpress-pvc.yaml templates/mariadb-statefulset.yaml templates/mariadb-service.yaml templates/ingress.yaml)
+required_files=(Chart.yaml values.yaml scripts/bootstrap.sh scripts/manage.sh templates/backup-cronjob.yaml templates/restore-job.yaml templates/network-policies.yaml templates/nginx-configmap.yaml templates/wordpress-deployment.yaml templates/wordpress-php-configmap.yaml templates/wordpress-service.yaml templates/wordpress-pvc.yaml templates/mariadb-statefulset.yaml templates/mariadb-service.yaml templates/ingress.yaml)
 for required_file in "${required_files[@]}"; do
   [[ -f "$repository_root/$required_file" ]] || { printf 'Missing required file: %s\n' "$required_file" >&2; exit 1; }
 done
@@ -90,10 +90,26 @@ if ! grep -Fq 'until mariadb-dump --host=mariadb' "$repository_root/templates/ba
 fi
 
 if ! grep -Fq 'name: prepare-wordpress-webroot' "$repository_root/templates/wordpress-deployment.yaml" || \
-  ! grep -Fq 'mkdir -p /var/www/html/wp-content/themes && chown 33:33 /var/www/html/wp-content && chown -R 33:33 /var/www/html/wp-content/themes' "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq 'mkdir -p /extensions/themes /extensions/plugins && chown -R 33:33 /extensions' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'runAsUser: 0' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq -- '- CHOWN' "$repository_root/templates/wordpress-deployment.yaml"; then
-  printf 'WordPress deployment must prepare the writable theme directory.\n' >&2
+  printf 'WordPress deployment must prepare writable extension directories.\n' >&2
+  exit 1
+fi
+
+if ! grep -Fq 'claimName: wordpress-extensions' "$repository_root/templates/wordpress-deployment.yaml" || \
+  [[ "$(grep -Fc 'subPath: themes' "$repository_root/templates/wordpress-deployment.yaml")" != "2" ]] || \
+  [[ "$(grep -Fc 'subPath: plugins' "$repository_root/templates/wordpress-deployment.yaml")" != "2" ]] || \
+  ! grep -Fq "define('FS_METHOD', 'direct');" "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq 'memory_limit = 512M' "$repository_root/templates/wordpress-php-configmap.yaml" || \
+  ! grep -Fq 'upload_max_filesize = 128M' "$repository_root/templates/wordpress-php-configmap.yaml"; then
+  printf 'WordPress must support persistent dashboard-managed extensions.\n' >&2
+  exit 1
+fi
+
+if ! grep -Fq 'restic backup --tag wordpress /backup/database.sql /extensions /uploads' "$repository_root/templates/backup-cronjob.yaml" || \
+  ! grep -Fq 'cp -a /restore/extensions/. /extensions/' "$repository_root/templates/restore-job.yaml"; then
+  printf 'WordPress backup and restore must include dashboard-managed extensions.\n' >&2
   exit 1
 fi
 

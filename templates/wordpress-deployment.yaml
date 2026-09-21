@@ -21,6 +21,7 @@ spec:
     metadata:
       annotations:
         checksum/nginx-configuration: {{ include (print $.Template.BasePath "/nginx-configmap.yaml") . | sha256sum }}
+        checksum/php-configuration: {{ include (print $.Template.BasePath "/wordpress-php-configmap.yaml") . | sha256sum }}
       labels:
         app.kubernetes.io/name: wordpress
         app.kubernetes.io/component: application
@@ -39,7 +40,7 @@ spec:
           command:
             - /bin/sh
             - -c
-            - mkdir -p /var/www/html/wp-content/themes && chown 33:33 /var/www/html/wp-content && chown -R 33:33 /var/www/html/wp-content/themes
+            - mkdir -p /extensions/themes /extensions/plugins && chown -R 33:33 /extensions
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -55,6 +56,8 @@ spec:
           volumeMounts:
             - name: webroot
               mountPath: /var/www/html
+            - name: extensions
+              mountPath: /extensions
       containers:
         - name: wordpress
           image: "{{ .Values.wordpress.image.repository }}:{{ .Values.wordpress.image.tag }}@{{ .Values.wordpress.image.digest }}"
@@ -98,6 +101,9 @@ spec:
                 define('WP_SITEURL', 'https://{{ .Values.ingress.hostname }}');
                 define('DISALLOW_FILE_EDIT', true);
                 define('FORCE_SSL_ADMIN', true);
+                define('FS_METHOD', 'direct');
+                define('WP_MEMORY_LIMIT', '256M');
+                define('WP_MAX_MEMORY_LIMIT', '512M');
           ports:
             - name: fastcgi
               containerPort: 9000
@@ -107,10 +113,20 @@ spec:
           volumeMounts:
             - name: webroot
               mountPath: /var/www/html
+            - name: extensions
+              mountPath: /var/www/html/wp-content/themes
+              subPath: themes
+            - name: extensions
+              mountPath: /var/www/html/wp-content/plugins
+              subPath: plugins
             - name: uploads
               mountPath: /var/www/html/wp-content/uploads
             - name: wordpress-tmp
               mountPath: /tmp
+            - name: php-configuration
+              mountPath: /usr/local/etc/php/conf.d/wordpress.ini
+              subPath: wordpress.ini
+              readOnly: true
         - name: nginx
           image: "{{ .Values.nginx.image.repository }}:{{ .Values.nginx.image.tag }}@{{ .Values.nginx.image.digest }}"
           imagePullPolicy: {{ .Values.nginx.image.pullPolicy }}
@@ -160,6 +176,14 @@ spec:
             - name: webroot
               mountPath: /var/www/html
               readOnly: true
+            - name: extensions
+              mountPath: /var/www/html/wp-content/themes
+              subPath: themes
+              readOnly: true
+            - name: extensions
+              mountPath: /var/www/html/wp-content/plugins
+              subPath: plugins
+              readOnly: true
       volumes:
         - name: nginx-configuration
           configMap:
@@ -170,6 +194,12 @@ spec:
           emptyDir: {}
         - name: wordpress-tmp
           emptyDir: {}
+        - name: php-configuration
+          configMap:
+            name: wordpress-php
+        - name: extensions
+          persistentVolumeClaim:
+            claimName: wordpress-extensions
         - name: uploads
           persistentVolumeClaim:
             claimName: wordpress-uploads

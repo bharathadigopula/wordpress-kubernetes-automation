@@ -1,0 +1,20 @@
+#==============================================================================
+# WORDPRESS PHP CONFIGURATION
+#==============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-php
+  labels:
+    app.kubernetes.io/name: wordpress
+    app.kubernetes.io/component: application
+data:
+  wordpress.ini: |
+    file_uploads = On
+    max_execution_time = 300
+    max_input_time = 300
+    max_input_vars = 5000
+    memory_limit = 512M
+    post_max_size = 128M
+    upload_max_filesize = 128M

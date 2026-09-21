@@ -39,6 +39,10 @@ spec:
               restic restore {{ .Values.backup.restore.snapshot | quote }} --target /restore
               find /uploads -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
               cp -a /restore/uploads/. /uploads/
+              if [ -d /restore/extensions ]; then
+                find /extensions -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+                cp -a /restore/extensions/. /extensions/
+              fi
           env:
             - name: HOME
               value: /tmp
@@ -63,6 +67,8 @@ spec:
               mountPath: /tmp
             - name: uploads
               mountPath: /uploads
+            - name: extensions
+              mountPath: /extensions
       containers:
         - name: database-restore
           image: "{{ .Values.mariadb.image.repository }}:{{ .Values.mariadb.image.tag }}@{{ .Values.mariadb.image.digest }}"
@@ -109,4 +115,7 @@ spec:
         - name: uploads
           persistentVolumeClaim:
             claimName: wordpress-uploads
+        - name: extensions
+          persistentVolumeClaim:
+            claimName: wordpress-extensions
 {{- end }}
