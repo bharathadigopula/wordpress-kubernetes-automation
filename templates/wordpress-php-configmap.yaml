@@ -11,10 +11,19 @@ metadata:
     app.kubernetes.io/component: application
 data:
   wordpress.ini: |
+    expose_php = Off
     file_uploads = On
     max_execution_time = 300
     max_input_time = 300
     max_input_vars = 5000
     memory_limit = 512M
+    opcache.enable = 1
+    opcache.interned_strings_buffer = 16
+    opcache.max_accelerated_files = 20000
+    opcache.memory_consumption = 192
+    opcache.revalidate_freq = 2
+    opcache.validate_timestamps = 1
     post_max_size = 128M
+    realpath_cache_size = 4096K
+    realpath_cache_ttl = 600
     upload_max_filesize = 128M

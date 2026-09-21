@@ -107,6 +107,16 @@ if ! grep -Fq 'claimName: wordpress-extensions' "$repository_root/templates/word
   exit 1
 fi
 
+if ! grep -Fq 'client_max_body_size 128m;' "$repository_root/templates/nginx-configmap.yaml" || \
+  ! grep -Fq 'gzip on;' "$repository_root/templates/nginx-configmap.yaml" || \
+  ! grep -Fq 'expires 30d;' "$repository_root/templates/nginx-configmap.yaml" || \
+  ! grep -Fq 'opcache.enable = 1' "$repository_root/templates/wordpress-php-configmap.yaml" || \
+  ! grep -Fq 'opcache.validate_timestamps = 1' "$repository_root/templates/wordpress-php-configmap.yaml" || \
+  ! grep -Fq "define('WP_POST_REVISIONS', 10);" "$repository_root/templates/wordpress-deployment.yaml"; then
+  printf 'WordPress must retain the dashboard-compatible performance baseline.\n' >&2
+  exit 1
+fi
+
 if ! grep -Fq 'restic backup --tag wordpress /backup/database.sql /extensions /uploads' "$repository_root/templates/backup-cronjob.yaml" || \
   ! grep -Fq 'cp -a /restore/extensions/. /extensions/' "$repository_root/templates/restore-job.yaml"; then
   printf 'WordPress backup and restore must include dashboard-managed extensions.\n' >&2

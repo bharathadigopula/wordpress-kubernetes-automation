@@ -104,6 +104,9 @@ spec:
                 define('FS_METHOD', 'direct');
                 define('WP_MEMORY_LIMIT', '256M');
                 define('WP_MAX_MEMORY_LIMIT', '512M');
+                define('AUTOSAVE_INTERVAL', 120);
+                define('WP_POST_REVISIONS', 10);
+                define('EMPTY_TRASH_DAYS', 14);
           ports:
             - name: fastcgi
               containerPort: 9000
