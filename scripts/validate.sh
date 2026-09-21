@@ -127,6 +127,16 @@ if ! grep -Fq 'fastcgi_cache WORDPRESS;' "$repository_root/templates/nginx-confi
   exit 1
 fi
 
+if ! grep -Fq 'map $http_x_forwarded_proto $redirect_https {' "$repository_root/templates/nginx-configmap.yaml" || \
+  ! grep -Fq 'return 301 https://$host$request_uri;' "$repository_root/templates/nginx-configmap.yaml" || \
+  ! grep -Fq 'add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;' "$repository_root/templates/nginx-configmap.yaml" || \
+  ! grep -Fq 'add_header Content-Security-Policy' "$repository_root/templates/nginx-configmap.yaml" || \
+  ! grep -Fq 'location = /robots.txt {' "$repository_root/templates/nginx-configmap.yaml" || \
+  ! grep -Fq 'location = /wp-sitemap.xml {' "$repository_root/templates/nginx-configmap.yaml"; then
+  printf 'WordPress must retain launch-ready HTTPS, security header, and discovery controls.\n' >&2
+  exit 1
+fi
+
 if ! grep -Fq 'app.kubernetes.io/component: cron' "$repository_root/templates/network-policies.yaml" || \
   ! grep -Fq 'port: 6379' "$repository_root/templates/network-policies.yaml" || \
   ! grep -Fq 'chmod -R u+rwX /extensions' "$repository_root/templates/wordpress-deployment.yaml"; then
