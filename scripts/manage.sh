@@ -272,6 +272,7 @@ case "$action" in
   define('WP_INSTALLING', true);
 require '/var/www/html/wp-load.php';
 require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
 if (!is_blog_installed()) {
     $result = wp_install(
@@ -297,6 +298,20 @@ if (!is_blog_installed()) {
     $theme = 'bharathcoudops';
     if (!is_dir(WP_CONTENT_DIR . '/themes/' . $theme)) {
       fwrite(STDERR, "wordpress_initialization=failed reason=theme_missing" . PHP_EOL);
+      exit(1);
+    }
+
+    $cache_plugin = 'redis-cache/redis-cache.php';
+    if (!is_plugin_active($cache_plugin)) {
+      $result = activate_plugin($cache_plugin);
+      if (is_wp_error($result)) {
+        fwrite(STDERR, $result->get_error_message() . PHP_EOL);
+        exit(1);
+      }
+    }
+
+    if (!wp_using_ext_object_cache()) {
+      fwrite(STDERR, "wordpress_initialization=failed reason=object_cache_inactive" . PHP_EOL);
       exit(1);
     }
 

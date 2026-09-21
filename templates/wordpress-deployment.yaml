@@ -40,7 +40,17 @@ spec:
           command:
             - /bin/sh
             - -c
-            - mkdir -p /extensions/themes /extensions/plugins && chown -R 33:33 /extensions
+            - |
+              mkdir -p /extensions/themes /extensions/plugins /nginx-cache
+              if [ ! -d /extensions/plugins/redis-cache ]; then
+                cp -R /usr/src/wordpress/wp-content/plugins/redis-cache /extensions/plugins/redis-cache
+              fi
+              if [ ! -f /extensions/object-cache.php ]; then
+                cp /usr/src/wordpress/wp-content/plugins/redis-cache/includes/object-cache.php /extensions/object-cache.php
+              fi
+              chown -R 33:33 /extensions
+              chmod -R u+rwX /extensions
+              chown -R 101:101 /nginx-cache
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -58,6 +68,8 @@ spec:
               mountPath: /var/www/html
             - name: extensions
               mountPath: /extensions
+            - name: nginx-cache
+              mountPath: /nginx-cache
       containers:
         - name: wordpress
           image: "{{ .Values.wordpress.image.repository }}:{{ .Values.wordpress.image.tag }}@{{ .Values.wordpress.image.digest }}"
@@ -107,6 +119,12 @@ spec:
                 define('AUTOSAVE_INTERVAL', 120);
                 define('WP_POST_REVISIONS', 10);
                 define('EMPTY_TRASH_DAYS', 14);
+                define('DISABLE_WP_CRON', true);
+                define('WP_REDIS_CLIENT', 'predis');
+                define('WP_REDIS_HOST', 'redis');
+                define('WP_REDIS_PORT', 6379);
+                define('WP_REDIS_DATABASE', 0);
+                define('WP_REDIS_PREFIX', '{{ .Values.ingress.hostname }}:');
           ports:
             - name: fastcgi
               containerPort: 9000
@@ -122,6 +140,9 @@ spec:
             - name: extensions
               mountPath: /var/www/html/wp-content/plugins
               subPath: plugins
+            - name: extensions
+              mountPath: /var/www/html/wp-content/object-cache.php
+              subPath: object-cache.php
             - name: uploads
               mountPath: /var/www/html/wp-content/uploads
             - name: wordpress-tmp
@@ -187,6 +208,12 @@ spec:
               mountPath: /var/www/html/wp-content/plugins
               subPath: plugins
               readOnly: true
+            - name: extensions
+              mountPath: /var/www/html/wp-content/object-cache.php
+              subPath: object-cache.php
+              readOnly: true
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
       volumes:
         - name: nginx-configuration
           configMap:
@@ -203,6 +230,9 @@ spec:
         - name: extensions
           persistentVolumeClaim:
             claimName: wordpress-extensions
+        - name: nginx-cache
+          emptyDir:
+            sizeLimit: 256Mi
         - name: uploads
           persistentVolumeClaim:
             claimName: wordpress-uploads

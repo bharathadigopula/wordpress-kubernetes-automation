@@ -11,6 +11,41 @@ metadata:
     app.kubernetes.io/component: application
 data:
   default.conf: |
+    map $request_method $skip_cache_method {
+      default 1;
+      GET 0;
+      HEAD 0;
+    }
+
+    map $query_string $skip_cache_query {
+      default 1;
+      "" 0;
+    }
+
+    map $request_uri $skip_cache_uri {
+      default 0;
+      ~^/wp-admin/ 1;
+      ~^/wp-login\.php 1;
+      ~^/wp-cron\.php 1;
+      ~^/wp-json/ 1;
+      ~^/xmlrpc\.php 1;
+    }
+
+    map $http_cookie $skip_cache_cookie {
+      default 0;
+      ~*wordpress_logged_in 1;
+      ~*comment_author 1;
+      ~*wp-postpass 1;
+      ~*woocommerce 1;
+    }
+
+    map "$skip_cache_method$skip_cache_query$skip_cache_uri$skip_cache_cookie" $skip_cache {
+      default 1;
+      "0000" 0;
+    }
+
+    fastcgi_cache_path /var/cache/nginx/wordpress levels=1:2 keys_zone=WORDPRESS:16m inactive=10m max_size=256m use_temp_path=off;
+
     server {
       listen 8080;
       server_name _;
@@ -54,6 +89,17 @@ data:
         fastcgi_param HTTP_X_FORWARDED_PROTO $http_x_forwarded_proto;
         fastcgi_buffer_size 32k;
         fastcgi_buffers 8 16k;
+        fastcgi_cache WORDPRESS;
+        fastcgi_cache_bypass $skip_cache;
+        fastcgi_cache_lock on;
+        fastcgi_cache_methods GET HEAD;
+        fastcgi_cache_valid 200 60s;
+        fastcgi_no_cache $skip_cache $upstream_http_set_cookie;
+        add_header Permissions-Policy "camera=(), geolocation=(), microphone=()" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-FastCGI-Cache $upstream_cache_status always;
         fastcgi_pass 127.0.0.1:9000;
       }
 

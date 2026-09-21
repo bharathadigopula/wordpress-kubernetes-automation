@@ -41,6 +41,23 @@ nginx:
       cpu: 250m
       memory: 128Mi
 
+redis:
+  image:
+    repository: redis
+    tag: 8.2.1-alpine
+    digest: sha256:987c376c727652f99625c7d205a1cba3cb2c53b92b0b62aade2bd48ee1593232
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 192Mi
+
+cron:
+  schedule: "*/5 * * * *"
+
 mariadb:
   image:
     repository: mariadb

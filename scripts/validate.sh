@@ -11,7 +11,7 @@ set -euo pipefail
 #==============================================================================
 
 repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-required_files=(Chart.yaml values.yaml scripts/bootstrap.sh scripts/manage.sh templates/backup-cronjob.yaml templates/restore-job.yaml templates/network-policies.yaml templates/nginx-configmap.yaml templates/wordpress-deployment.yaml templates/wordpress-php-configmap.yaml templates/wordpress-service.yaml templates/wordpress-pvc.yaml templates/mariadb-statefulset.yaml templates/mariadb-service.yaml templates/ingress.yaml)
+required_files=(Chart.yaml values.yaml scripts/bootstrap.sh scripts/manage.sh templates/backup-cronjob.yaml templates/restore-job.yaml templates/network-policies.yaml templates/nginx-configmap.yaml templates/redis-deployment.yaml templates/redis-service.yaml templates/wordpress-cronjob.yaml templates/wordpress-deployment.yaml templates/wordpress-php-configmap.yaml templates/wordpress-service.yaml templates/wordpress-pvc.yaml templates/mariadb-statefulset.yaml templates/mariadb-service.yaml templates/ingress.yaml)
 for required_file in "${required_files[@]}"; do
   [[ -f "$repository_root/$required_file" ]] || { printf 'Missing required file: %s\n' "$required_file" >&2; exit 1; }
 done
@@ -31,8 +31,8 @@ if grep -R --line-number --extended-regexp 'image:[[:space:]]+[^[:space:]]+:late
 fi
 
 image_digest_count=$(grep -Ec '^[[:space:]]+digest:[[:space:]]+sha256:[[:xdigit:]]{64}$' "$repository_root/values.yaml")
-if [[ "$image_digest_count" -ne 4 ]]; then
-  printf 'WordPress, NGINX, MariaDB, and Restic images must use immutable SHA-256 digests.\n' >&2
+if [[ "$image_digest_count" -ne 5 ]]; then
+  printf 'WordPress, NGINX, Redis, MariaDB, and Restic images must use immutable SHA-256 digests.\n' >&2
   exit 1
 fi
 
@@ -90,7 +90,7 @@ if ! grep -Fq 'until mariadb-dump --host=mariadb' "$repository_root/templates/ba
 fi
 
 if ! grep -Fq 'name: prepare-wordpress-webroot' "$repository_root/templates/wordpress-deployment.yaml" || \
-  ! grep -Fq 'mkdir -p /extensions/themes /extensions/plugins && chown -R 33:33 /extensions' "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq 'mkdir -p /extensions/themes /extensions/plugins /nginx-cache' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'runAsUser: 0' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq -- '- CHOWN' "$repository_root/templates/wordpress-deployment.yaml"; then
   printf 'WordPress deployment must prepare writable extension directories.\n' >&2
@@ -114,6 +114,23 @@ if ! grep -Fq 'client_max_body_size 128m;' "$repository_root/templates/nginx-con
   ! grep -Fq 'opcache.validate_timestamps = 1' "$repository_root/templates/wordpress-php-configmap.yaml" || \
   ! grep -Fq "define('WP_POST_REVISIONS', 10);" "$repository_root/templates/wordpress-deployment.yaml"; then
   printf 'WordPress must retain the dashboard-compatible performance baseline.\n' >&2
+  exit 1
+fi
+
+if ! grep -Fq 'fastcgi_cache WORDPRESS;' "$repository_root/templates/nginx-configmap.yaml" || \
+  ! grep -Fq "fastcgi_cache_bypass \$skip_cache;" "$repository_root/templates/nginx-configmap.yaml" || \
+  ! grep -Fq 'fastcgi_cache_valid 200 60s;' "$repository_root/templates/nginx-configmap.yaml" || \
+  ! grep -Fq "define('DISABLE_WP_CRON', true);" "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq "define('WP_REDIS_CLIENT', 'predis');" "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq "wp_using_ext_object_cache()" "$repository_root/scripts/manage.sh"; then
+  printf 'WordPress must retain cache-safe dynamic performance controls.\n' >&2
+  exit 1
+fi
+
+if ! grep -Fq 'app.kubernetes.io/component: cron' "$repository_root/templates/network-policies.yaml" || \
+  ! grep -Fq 'port: 6379' "$repository_root/templates/network-policies.yaml" || \
+  ! grep -Fq 'chmod -R u+rwX /extensions' "$repository_root/templates/wordpress-deployment.yaml"; then
+  printf 'WordPress performance services must retain isolated writable connectivity.\n' >&2
   exit 1
 fi
 
