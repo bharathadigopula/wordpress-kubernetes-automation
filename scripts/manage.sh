@@ -315,6 +315,14 @@ if (!is_blog_installed()) {
       exit(1);
     }
 
+    $cache_key = 'deployment-postcondition';
+    if (!wp_cache_set($cache_key, 'ready', 'bharathcoudops', 30) ||
+        wp_cache_get($cache_key, 'bharathcoudops') !== 'ready') {
+      fwrite(STDERR, "wordpress_initialization=failed reason=object_cache_unavailable" . PHP_EOL);
+      exit(1);
+    }
+    wp_cache_delete($cache_key, 'bharathcoudops');
+
     update_option('template', $theme);
     update_option('stylesheet', $theme);
     wp_cache_flush();
@@ -323,6 +331,12 @@ if (!is_blog_installed()) {
       exit(1);
     }
 PHP
+    curl --fail --silent --show-error --dump-header /dev/null --output /dev/null "https://$hostname/"
+    cache_headers=$(curl --fail --silent --show-error --dump-header - --output /dev/null "https://$hostname/")
+    if ! grep -Eiq '^x-fastcgi-cache:[[:space:]]*HIT' <<< "$cache_headers"; then
+      printf 'WordPress FastCGI cache postcondition failed.\n' >&2
+      exit 1
+    fi
     printf 'wordpress_deploy=ready\n'
     ;;
   backup)
