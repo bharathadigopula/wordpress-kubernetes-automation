@@ -127,7 +127,8 @@ if ! grep -Fq 'fastcgi_cache WORDPRESS;' "$repository_root/templates/nginx-confi
   exit 1
 fi
 
-if ! grep -Fq 'map $http_x_forwarded_proto $redirect_https {' "$repository_root/templates/nginx-configmap.yaml" || \
+if ! grep -Fq 'map $http_cf_visitor $redirect_https {' "$repository_root/templates/nginx-configmap.yaml" || \
+  ! grep -Fq '~*"scheme":"http" 1;' "$repository_root/templates/nginx-configmap.yaml" || \
   ! grep -Fq 'return 301 https://$host$request_uri;' "$repository_root/templates/nginx-configmap.yaml" || \
   ! grep -Fq 'add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;' "$repository_root/templates/nginx-configmap.yaml" || \
   ! grep -Fq 'add_header Content-Security-Policy' "$repository_root/templates/nginx-configmap.yaml" || \
