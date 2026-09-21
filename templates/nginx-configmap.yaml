@@ -83,7 +83,8 @@ data:
       add_header X-Frame-Options "SAMEORIGIN" always;
 
       location = /robots.txt {
-        rewrite ^ /index.php?robots=1 last;
+        default_type text/plain;
+        return 200 "User-agent: *\nDisallow: /wp-admin/\nAllow: /wp-admin/admin-ajax.php\nSitemap: https://$host/wp-sitemap.xml\n";
       }
 
       location = /wp-sitemap.xml {

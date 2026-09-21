@@ -133,6 +133,7 @@ if ! grep -Fq 'map $http_cf_visitor $redirect_https {' "$repository_root/templat
   ! grep -Fq 'add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;' "$repository_root/templates/nginx-configmap.yaml" || \
   ! grep -Fq 'add_header Content-Security-Policy' "$repository_root/templates/nginx-configmap.yaml" || \
   ! grep -Fq 'location = /robots.txt {' "$repository_root/templates/nginx-configmap.yaml" || \
+  ! grep -Fq 'Sitemap: https://$host/wp-sitemap.xml' "$repository_root/templates/nginx-configmap.yaml" || \
   ! grep -Fq 'location = /wp-sitemap.xml {' "$repository_root/templates/nginx-configmap.yaml"; then
   printf 'WordPress must retain launch-ready HTTPS, security header, and discovery controls.\n' >&2
   exit 1
