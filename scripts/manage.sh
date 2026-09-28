@@ -340,6 +340,14 @@ if ($new_install) {
       exit(1);
     }
 
+    global $wp_object_cache;
+    if (!is_object($wp_object_cache) ||
+        !method_exists($wp_object_cache, 'redis_status') ||
+        !$wp_object_cache->redis_status()) {
+      fwrite(STDERR, "wordpress_initialization=failed reason=redis_connection_unavailable" . PHP_EOL);
+      exit(1);
+    }
+
     $cache_key = 'deployment-postcondition';
     if (!wp_cache_set($cache_key, 'ready', 'wordpress-platform', 30) ||
         wp_cache_get($cache_key, 'wordpress-platform') !== 'ready') {
