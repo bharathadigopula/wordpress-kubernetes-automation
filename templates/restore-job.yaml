@@ -37,6 +37,10 @@ spec:
           args:
             - |
               restic restore {{ .Values.backup.restore.snapshot | quote }} --target /restore
+              if [ -d /restore/webroot ]; then
+                find /webroot -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+                cp -a /restore/webroot/. /webroot/
+              fi
               find /uploads -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
               cp -a /restore/uploads/. /uploads/
               if [ -d /restore/extensions ]; then
@@ -69,6 +73,8 @@ spec:
               mountPath: /uploads
             - name: extensions
               mountPath: /extensions
+            - name: webroot
+              mountPath: /webroot
       containers:
         - name: database-restore
           image: "{{ .Values.mariadb.image.repository }}:{{ .Values.mariadb.image.tag }}@{{ .Values.mariadb.image.digest }}"
@@ -118,4 +124,7 @@ spec:
         - name: extensions
           persistentVolumeClaim:
             claimName: wordpress-extensions
+        - name: webroot
+          persistentVolumeClaim:
+            claimName: wordpress-core
 {{- end }}

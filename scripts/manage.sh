@@ -11,20 +11,27 @@ set -euo pipefail
 #==============================================================================
 
 action="${1:-validate}"
-image_repository="${2:-}"
-image_tag="${3:-}"
-image_digest="${4:-}"
-hostname="${5:-ignitox.bharathcloudops.com}"
-restore_snapshot="${6:-latest}"
-operation_id="${7:-manual}"
-database_secrets="${8:-}"
-backup_secrets="${9:-}"
-registry_secrets="${10:-}"
-namespace=wordpress
+chart_repository="${2:-}"
+chart_ref="${3:-}"
+image_repository="${4:-}"
+image_tag="${5:-}"
+image_digest="${6:-}"
+hostname="${7:-ignitox.bharathcloudops.com}"
+site_title="${8:-WordPress}"
+admin_user="${9:-wordpress-admin}"
+admin_email="${10:-wordpress@example.invalid}"
+restore_snapshot="${11:-latest}"
+operation_id="${12:-manual}"
+database_secrets="${13:-}"
+backup_secrets="${14:-}"
+registry_secrets="${15:-}"
+namespace=ignitox
 release=wordpress
+legacy_namespace=wordpress
 kubeconfig=/etc/rancher/k3s/k3s.yaml
 k3s_version=v1.36.4+k3s1
 repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+chart_root="$repository_root/.shared-chart/charts/wordpress"
 
 case "$action" in
   validate|deploy|backup|restore|status)
@@ -36,6 +43,9 @@ case "$action" in
 esac
 
 if [[ ! "$hostname" =~ ^[a-z0-9.-]+$ ]] || \
+  [[ ! "$chart_repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || \
+  [[ ! "$chart_ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
+  [[ -z "$site_title" || ! "$admin_user" =~ ^[A-Za-z0-9._-]+$ || ! "$admin_email" =~ ^[^@[:space:]]+@[^@[:space:]]+$ ]] || \
   [[ ! "$operation_id" =~ ^[a-z0-9][a-z0-9-]{0,39}$ ]] || \
   [[ ! "$restore_snapshot" =~ ^[A-Za-z0-9:._/-]+$ ]]; then
   printf 'Invalid WordPress lifecycle inputs.\n' >&2
@@ -48,6 +58,15 @@ fi
 
 kubectl_command=(sudo /usr/local/bin/k3s kubectl --kubeconfig "$kubeconfig")
 helm_command=(sudo env KUBECONFIG="$kubeconfig" /usr/local/bin/helm)
+
+prepare_chart() {
+  rm -rf "$repository_root/.shared-chart"
+  mkdir -p "$repository_root/.shared-chart"
+  curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+    "https://github.com/${chart_repository}/archive/refs/tags/${chart_ref}.tar.gz" |
+    tar --extract --gzip --directory "$repository_root/.shared-chart" --strip-components=1
+  [[ -r "$chart_root/Chart.yaml" ]]
+}
 
 install_k3s() {
   local architecture checksum download_name temporary_binary
@@ -164,7 +183,7 @@ validate_runtime() {
       return 1
     fi
   done
-  if [[ ! -r "$repository_root/Chart.yaml" ]]; then
+  if [[ ! -r "$chart_root/Chart.yaml" ]]; then
     printf 'WordPress Helm chart is unreadable.\n' >&2
     return 1
   fi
@@ -197,6 +216,9 @@ validate_runtime() {
 helm_values=(
   --namespace "$namespace"
   --set-string ingress.hostname="$hostname"
+  --set-string wordpress.siteTitle="$site_title"
+  --set-string wordpress.adminUser="$admin_user"
+  --set-string wordpress.adminEmail="$admin_email"
   --set backup.enabled=true
 )
 
@@ -232,6 +254,7 @@ reconcile_secrets() {
 # LIFECYCLE ACTIONS
 #==============================================================================
 
+prepare_chart
 if [[ "$action" == "deploy" ]]; then
   install_k3s
 fi
@@ -249,8 +272,14 @@ case "$action" in
       exit 2
     fi
     install_helm
+    if "${helm_command[@]}" status "$release" --namespace "$legacy_namespace" >/dev/null 2>&1; then
+      "${helm_command[@]}" uninstall "$release" --namespace "$legacy_namespace" --wait --timeout 10m
+    fi
+    if "${kubectl_command[@]}" get namespace "$legacy_namespace" >/dev/null 2>&1; then
+      "${kubectl_command[@]}" delete namespace "$legacy_namespace" --wait=true --timeout=10m
+    fi
     reconcile_secrets
-    "${helm_command[@]}" upgrade --install "$release" "$repository_root" \
+    "${helm_command[@]}" upgrade --install "$release" "$chart_root" \
       "${helm_values[@]}" --create-namespace --atomic --cleanup-on-fail --wait \
       --timeout 15m --history-max 10 \
       --set-string wordpress.image.repository="$image_repository" \
@@ -258,25 +287,16 @@ case "$action" in
       --set-string wordpress.image.digest="$image_digest" \
       --set imagePullSecrets[0].name=wordpress-registry >/dev/null
     "${kubectl_command[@]}" --namespace "$namespace" rollout status deployment/wordpress --timeout=10m >/dev/null
-    "${kubectl_command[@]}" --namespace "$namespace" exec deployment/wordpress -c wordpress -- sh -c '
-      test -d /usr/src/wordpress/wp-content/themes/bharathcoudops
-      mkdir -p /var/www/html/wp-content/themes
-      chmod -R u+rwX /var/www/html/wp-content/themes
-      rm -rf /var/www/html/wp-content/themes/.bharathcoudops.next
-      cp -R /usr/src/wordpress/wp-content/themes/bharathcoudops /var/www/html/wp-content/themes/.bharathcoudops.next
-      rm -rf /var/www/html/wp-content/themes/bharathcoudops
-      mv /var/www/html/wp-content/themes/.bharathcoudops.next /var/www/html/wp-content/themes/bharathcoudops
-    ' >/dev/null
     "${kubectl_command[@]}" --namespace "$namespace" exec -i deployment/wordpress -c wordpress -- php >/dev/null <<'PHP'
 <?php
   define('WP_INSTALLING', true);
 require '/var/www/html/wp-load.php';
 require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
-if (!is_blog_installed()) {
+$new_install = !is_blog_installed();
+if ($new_install) {
     $result = wp_install(
-        'BharathCoudOps',
+        getenv('WORDPRESS_SITE_TITLE'),
         getenv('WORDPRESS_ADMIN_USER'),
         getenv('WORDPRESS_ADMIN_EMAIL'),
         true,
@@ -295,39 +315,12 @@ if (!is_blog_installed()) {
       exit(1);
     }
 
-    $theme = 'bharathcoudops';
-    if (!is_dir(WP_CONTENT_DIR . '/themes/' . $theme)) {
-      fwrite(STDERR, "wordpress_initialization=failed reason=theme_missing" . PHP_EOL);
-      exit(1);
-    }
-
-    $cache_plugin = 'redis-cache/redis-cache.php';
-    if (!is_plugin_active($cache_plugin)) {
-      $result = activate_plugin($cache_plugin);
-      if (is_wp_error($result)) {
-        fwrite(STDERR, $result->get_error_message() . PHP_EOL);
-        exit(1);
-      }
-    }
-
-    if (!wp_using_ext_object_cache()) {
-      fwrite(STDERR, "wordpress_initialization=failed reason=object_cache_inactive" . PHP_EOL);
-      exit(1);
-    }
-
-    $cache_key = 'deployment-postcondition';
-    if (!wp_cache_set($cache_key, 'ready', 'bharathcoudops', 30) ||
-        wp_cache_get($cache_key, 'bharathcoudops') !== 'ready') {
-      fwrite(STDERR, "wordpress_initialization=failed reason=object_cache_unavailable" . PHP_EOL);
-      exit(1);
-    }
-    wp_cache_delete($cache_key, 'bharathcoudops');
-
-    update_option('template', $theme);
-    update_option('stylesheet', $theme);
+    $active_template = get_option('template');
+    $active_stylesheet = get_option('stylesheet');
     wp_cache_flush();
-    if (get_option('template') !== $theme || get_option('stylesheet') !== $theme) {
-      fwrite(STDERR, "wordpress_initialization=failed reason=theme_postcondition" . PHP_EOL);
+    if (!is_dir(WP_CONTENT_DIR . '/themes/' . $active_template) ||
+        !is_dir(WP_CONTENT_DIR . '/themes/' . $active_stylesheet)) {
+      fwrite(STDERR, "wordpress_initialization=failed reason=active_theme_missing" . PHP_EOL);
       exit(1);
     }
 PHP
@@ -357,7 +350,7 @@ PHP
     "${kubectl_command[@]}" --namespace "$namespace" scale deployment wordpress --replicas=0
     "${kubectl_command[@]}" --namespace "$namespace" wait --for=delete pod \
       --selector=app.kubernetes.io/name=wordpress,app.kubernetes.io/component=application --timeout=10m
-    "${helm_command[@]}" template "$release" "$repository_root" "${helm_values[@]}" \
+    "${helm_command[@]}" template "$release" "$chart_root" "${helm_values[@]}" \
       --show-only templates/restore-job.yaml \
       --set backup.restore.enabled=true \
       --set-string backup.restore.id="$operation_id" \

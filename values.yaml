@@ -7,6 +7,9 @@ nameOverride: wordpress
 imagePullSecrets: []
 
 wordpress:
+  siteTitle: WordPress
+  adminUser: wordpress-admin
+  adminEmail: wordpress@example.invalid
   image:
     repository: wordpress
     tag: 7.1.0-php8.5-fpm-alpine
@@ -18,6 +21,7 @@ wordpress:
   persistence:
     storageClass: ""
     size: 15Gi
+    coreSize: 5Gi
     extensionsSize: 5Gi
   resources:
     requests:
