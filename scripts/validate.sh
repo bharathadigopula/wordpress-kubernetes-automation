@@ -140,8 +140,11 @@ if ! grep -Fq 'fastcgi_cache WORDPRESS;' "$repository_root/templates/nginx-confi
   ! grep -Fq 'fastcgi_cache_valid 200 60s;' "$repository_root/templates/nginx-configmap.yaml" || \
   ! grep -Fq "define('DISABLE_WP_CRON', true);" "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq "define('WP_REDIS_CLIENT', 'predis');" "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq "define('WP_REDIS_GRACEFUL', true);" "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq "activate_plugin(\$cache_plugin)" "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq 'wp_using_ext_object_cache()' "$repository_root/scripts/manage.sh"; then
+  ! grep -Fq 'wp_using_ext_object_cache()' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq "method_exists(\$wp_object_cache, 'redis_status')" "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq '!$wp_object_cache->redis_status()' "$repository_root/scripts/manage.sh"; then
   printf 'WordPress must retain cache-safe dynamic performance controls.\n' >&2
   exit 1
 fi
@@ -184,6 +187,7 @@ if [[ "$(grep -Fc 'apply -f - >/dev/null' "$repository_root/scripts/manage.sh")"
   ! grep -Fq '$new_install = !is_blog_installed();' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'wordpress_initialization=failed reason=installation_postcondition' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'wordpress_initialization=failed reason=object_cache_inactive' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'wordpress_initialization=failed reason=redis_connection_unavailable' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'wordpress_initialization=failed reason=object_cache_unavailable' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "'^x-fastcgi-cache:[[:space:]]*HIT'" "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'wordpress_initialization=failed reason=active_theme_missing' "$repository_root/scripts/manage.sh" || \

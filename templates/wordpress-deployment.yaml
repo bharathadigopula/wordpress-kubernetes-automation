@@ -133,6 +133,7 @@ spec:
                 define('WP_REDIS_PORT', 6379);
                 define('WP_REDIS_DATABASE', 0);
                 define('WP_REDIS_PREFIX', '{{ .Values.ingress.hostname }}:');
+                define('WP_REDIS_GRACEFUL', true);
           ports:
             - name: fastcgi
               containerPort: 9000
