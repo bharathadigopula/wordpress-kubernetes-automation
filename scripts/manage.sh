@@ -287,11 +287,13 @@ case "$action" in
       --set-string wordpress.image.digest="$image_digest" \
       --set imagePullSecrets[0].name=wordpress-registry >/dev/null
     "${kubectl_command[@]}" --namespace "$namespace" rollout status deployment/wordpress --timeout=10m >/dev/null
+    "${kubectl_command[@]}" --namespace "$namespace" rollout status deployment/redis --timeout=10m >/dev/null
     "${kubectl_command[@]}" --namespace "$namespace" exec -i deployment/wordpress -c wordpress -- php >/dev/null <<'PHP'
 <?php
   define('WP_INSTALLING', true);
 require '/var/www/html/wp-load.php';
 require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
 $new_install = !is_blog_installed();
 if ($new_install) {
@@ -323,6 +325,28 @@ if ($new_install) {
       fwrite(STDERR, "wordpress_initialization=failed reason=active_theme_missing" . PHP_EOL);
       exit(1);
     }
+
+    $cache_plugin = 'redis-cache/redis-cache.php';
+    if (!is_plugin_active($cache_plugin)) {
+      $result = activate_plugin($cache_plugin);
+      if (is_wp_error($result)) {
+        fwrite(STDERR, $result->get_error_message() . PHP_EOL);
+        exit(1);
+      }
+    }
+
+    if (!wp_using_ext_object_cache()) {
+      fwrite(STDERR, "wordpress_initialization=failed reason=object_cache_inactive" . PHP_EOL);
+      exit(1);
+    }
+
+    $cache_key = 'deployment-postcondition';
+    if (!wp_cache_set($cache_key, 'ready', 'wordpress-platform', 30) ||
+        wp_cache_get($cache_key, 'wordpress-platform') !== 'ready') {
+      fwrite(STDERR, "wordpress_initialization=failed reason=object_cache_unavailable" . PHP_EOL);
+      exit(1);
+    }
+    wp_cache_delete($cache_key, 'wordpress-platform');
 PHP
     curl --fail --silent --show-error --dump-header /dev/null --output /dev/null "https://$hostname/"
     cache_headers=$(curl --fail --silent --show-error --dump-header - --output /dev/null "https://$hostname/")
