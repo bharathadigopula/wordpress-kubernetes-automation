@@ -42,11 +42,11 @@ spec:
             - -c
             - |
               mkdir -p /extensions/themes /extensions/plugins /nginx-cache
-              if [ ! -d /extensions/plugins/redis-cache ]; then
-                cp -R /usr/src/wordpress/wp-content/plugins/redis-cache /extensions/plugins/redis-cache
-              fi
-              if [ ! -f /extensions/object-cache.php ]; then
-                cp /usr/src/wordpress/wp-content/plugins/redis-cache/includes/object-cache.php /extensions/object-cache.php
+              rm -f /var/www/html/wp-config.php
+              chown -R 33:33 /var/www/html
+              chmod -R u+rwX /var/www/html
+              if [ -z "$(find /extensions/themes -mindepth 1 -maxdepth 1 -type d -print -quit)" ]; then
+                cp -R /usr/src/wordpress/wp-content/themes/. /extensions/themes/
               fi
               chown -R 33:33 /extensions
               chmod -R u+rwX /extensions
@@ -98,14 +98,16 @@ spec:
                   name: {{ .Values.secrets.existingSecret }}
                   key: {{ .Values.secrets.wordpressDatabasePasswordKey }}
             - name: WORDPRESS_ADMIN_USER
-              value: bharathcloudops-admin
+              value: {{ .Values.wordpress.adminUser | quote }}
             - name: WORDPRESS_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secrets.existingSecret }}
                   key: {{ .Values.secrets.wordpressAdminPasswordKey }}
             - name: WORDPRESS_ADMIN_EMAIL
-              value: wordpress@bharathcloudops.com
+              value: {{ .Values.wordpress.adminEmail | quote }}
+            - name: WORDPRESS_SITE_TITLE
+              value: {{ .Values.wordpress.siteTitle | quote }}
             - name: WORDPRESS_CONFIG_EXTRA
               value: |
                 $_SERVER['HTTPS'] = 'on';
@@ -140,9 +142,6 @@ spec:
             - name: extensions
               mountPath: /var/www/html/wp-content/plugins
               subPath: plugins
-            - name: extensions
-              mountPath: /var/www/html/wp-content/object-cache.php
-              subPath: object-cache.php
             - name: uploads
               mountPath: /var/www/html/wp-content/uploads
             - name: wordpress-tmp
@@ -208,10 +207,6 @@ spec:
               mountPath: /var/www/html/wp-content/plugins
               subPath: plugins
               readOnly: true
-            - name: extensions
-              mountPath: /var/www/html/wp-content/object-cache.php
-              subPath: object-cache.php
-              readOnly: true
             - name: nginx-cache
               mountPath: /var/cache/nginx
       volumes:
@@ -221,7 +216,8 @@ spec:
         - name: nginx-tmp
           emptyDir: {}
         - name: webroot
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: wordpress-core
         - name: wordpress-tmp
           emptyDir: {}
         - name: php-configuration

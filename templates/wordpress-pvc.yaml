@@ -1,4 +1,27 @@
 #==============================================================================
+# WORDPRESS CORE PERSISTENT VOLUME CLAIM
+#==============================================================================
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-core
+  labels:
+    app.kubernetes.io/name: wordpress
+    app.kubernetes.io/component: application
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with .Values.wordpress.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.wordpress.persistence.coreSize }}
+
+---
+
+#==============================================================================
 # WORDPRESS UPLOADS PERSISTENT VOLUME CLAIM
 #==============================================================================
 

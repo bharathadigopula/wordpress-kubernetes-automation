@@ -40,6 +40,10 @@ fi
 # K3S PROVISIONING VALIDATION
 #==============================================================================
 
+grep -Fq 'namespace=ignitox' "$repository_root/scripts/manage.sh"
+grep -Fq 'legacy_namespace=wordpress' "$repository_root/scripts/manage.sh"
+grep -Fq 'chart_root="$repository_root/.shared-chart/charts/wordpress"' "$repository_root/scripts/manage.sh"
+grep -Fq 'archive/refs/tags/${chart_ref}.tar.gz' "$repository_root/scripts/manage.sh"
 grep -Fq 'k3s_version=v1.36.4+k3s1' "$repository_root/scripts/manage.sh"
 grep -Fq "sha256sum --check --status" "$repository_root/scripts/manage.sh"
 grep -Fq 'sudo systemctl enable --now k3s' "$repository_root/scripts/manage.sh"
@@ -52,8 +56,8 @@ grep -Fq 'k3s_installation=required' "$repository_root/scripts/manage.sh"
 
 if command -v helm >/dev/null 2>&1; then
   helm lint "$repository_root"
-  helm template wordpress "$repository_root" --namespace wordpress >/dev/null
-  helm template wordpress "$repository_root" --namespace wordpress \
+  helm template wordpress "$repository_root" --namespace ignitox >/dev/null
+  helm template wordpress "$repository_root" --namespace ignitox \
     --set backup.enabled=true \
     --set backup.restore.enabled=true \
     --set backup.restore.id=validation >/dev/null
@@ -67,9 +71,9 @@ elif command -v docker >/dev/null 2>&1; then
     helm_mount=(--volumes-from "$jenkins_container_id" --workdir "$repository_root")
   fi
   docker run --rm "${helm_mount[@]}" "$helm_image" lint "$helm_chart"
-  docker run --rm "${helm_mount[@]}" "$helm_image" template wordpress "$helm_chart" --namespace wordpress >/dev/null
+  docker run --rm "${helm_mount[@]}" "$helm_image" template wordpress "$helm_chart" --namespace ignitox >/dev/null
   docker run --rm "${helm_mount[@]}" "$helm_image" template wordpress "$helm_chart" \
-    --namespace wordpress --set backup.enabled=true \
+    --namespace ignitox --set backup.enabled=true \
     --set backup.restore.enabled=true --set backup.restore.id=validation >/dev/null
 else
   printf 'Helm or Docker is required for chart validation.\n' >&2
@@ -91,19 +95,32 @@ fi
 
 if ! grep -Fq 'name: prepare-wordpress-webroot' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'mkdir -p /extensions/themes /extensions/plugins /nginx-cache' "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq 'rm -f /var/www/html/wp-config.php' "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq 'cp -R /usr/src/wordpress/wp-content/themes/. /extensions/themes/' "$repository_root/templates/wordpress-deployment.yaml" || \
+  grep -Fq '/usr/src/wordpress/wp-content/plugins/' "$repository_root/templates/wordpress-deployment.yaml" || \
+  grep -Fq 'subPath: object-cache.php' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'runAsUser: 0' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq -- '- CHOWN' "$repository_root/templates/wordpress-deployment.yaml"; then
-  printf 'WordPress deployment must prepare writable extension directories.\n' >&2
+  printf 'WordPress deployment must prepare persistent core and extension directories.\n' >&2
   exit 1
 fi
 
-if ! grep -Fq 'claimName: wordpress-extensions' "$repository_root/templates/wordpress-deployment.yaml" || \
+if ! grep -Fq 'claimName: wordpress-core' "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq 'claimName: wordpress-extensions' "$repository_root/templates/wordpress-deployment.yaml" || \
   [[ "$(grep -Fc 'subPath: themes' "$repository_root/templates/wordpress-deployment.yaml")" != "2" ]] || \
   [[ "$(grep -Fc 'subPath: plugins' "$repository_root/templates/wordpress-deployment.yaml")" != "2" ]] || \
   ! grep -Fq "define('FS_METHOD', 'direct');" "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'memory_limit = 512M' "$repository_root/templates/wordpress-php-configmap.yaml" || \
   ! grep -Fq 'upload_max_filesize = 128M' "$repository_root/templates/wordpress-php-configmap.yaml"; then
   printf 'WordPress must support persistent dashboard-managed extensions.\n' >&2
+  exit 1
+fi
+
+if ! grep -Fq 'wordpress.siteTitle="$site_title"' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'wordpress.adminUser="$admin_user"' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'wordpress.adminEmail="$admin_email"' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq "getenv('WORDPRESS_SITE_TITLE')" "$repository_root/scripts/manage.sh"; then
+  printf 'WordPress installation identity must be supplied by per-site configuration.\n' >&2
   exit 1
 fi
 
@@ -122,7 +139,7 @@ if ! grep -Fq 'fastcgi_cache WORDPRESS;' "$repository_root/templates/nginx-confi
   ! grep -Fq 'fastcgi_cache_valid 200 60s;' "$repository_root/templates/nginx-configmap.yaml" || \
   ! grep -Fq "define('DISABLE_WP_CRON', true);" "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq "define('WP_REDIS_CLIENT', 'predis');" "$repository_root/templates/wordpress-deployment.yaml" || \
-  ! grep -Fq "wp_using_ext_object_cache()" "$repository_root/scripts/manage.sh"; then
+  grep -Fq "activate_plugin(" "$repository_root/scripts/manage.sh"; then
   printf 'WordPress must retain cache-safe dynamic performance controls.\n' >&2
   exit 1
 fi
@@ -146,28 +163,26 @@ if ! grep -Fq 'app.kubernetes.io/component: cron' "$repository_root/templates/ne
   exit 1
 fi
 
-if ! grep -Fq 'restic backup --tag wordpress /backup/database.sql /extensions /uploads' "$repository_root/templates/backup-cronjob.yaml" || \
+if ! grep -Fq 'restic backup --tag wordpress /backup/database.sql /webroot /extensions /uploads' "$repository_root/templates/backup-cronjob.yaml" || \
+  ! grep -Fq 'cp -a /restore/webroot/. /webroot/' "$repository_root/templates/restore-job.yaml" || \
   ! grep -Fq 'cp -a /restore/extensions/. /extensions/' "$repository_root/templates/restore-job.yaml"; then
-  printf 'WordPress backup and restore must include dashboard-managed extensions.\n' >&2
+  printf 'WordPress backup and restore must include dashboard-managed core and extensions.\n' >&2
   exit 1
 fi
 
 if [[ "$(grep -Fc 'apply -f - >/dev/null' "$repository_root/scripts/manage.sh")" != "4" ]] || \
   ! grep -Fq -- '--set imagePullSecrets[0].name=wordpress-registry >/dev/null' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'uninstall "$release" --namespace "$legacy_namespace"' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'delete namespace "$legacy_namespace"' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'upgrade --install "$release" "$chart_root"' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'rollout status deployment/wordpress --timeout=10m >/dev/null' "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq 'mkdir -p /var/www/html/wp-content/themes' "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq 'chmod -R u+rwX /var/www/html/wp-content/themes' "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq 'cp -R /usr/src/wordpress/wp-content/themes/bharathcoudops /var/www/html/wp-content/themes/.bharathcoudops.next' "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq 'mv /var/www/html/wp-content/themes/.bharathcoudops.next /var/www/html/wp-content/themes/bharathcoudops' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "exec -i deployment/wordpress -c wordpress -- php >/dev/null" "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "define('WP_INSTALLING', true);" "$repository_root/scripts/manage.sh" || \
-  [[ "$(grep -Fc "if (!is_blog_installed())" "$repository_root/scripts/manage.sh")" != "2" ]] || \
+  ! grep -Fq '$new_install = !is_blog_installed();' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'wordpress_initialization=failed reason=installation_postcondition' "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq 'wordpress_initialization=failed reason=object_cache_unavailable' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "'^x-fastcgi-cache:[[:space:]]*HIT'" "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq "update_option('template', \$theme)" "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq "update_option('stylesheet', \$theme)" "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq 'wordpress_initialization=failed reason=theme_postcondition' "$repository_root/scripts/manage.sh"; then
+  ! grep -Fq 'wordpress_initialization=failed reason=active_theme_missing' "$repository_root/scripts/manage.sh" || \
+  grep -Fq 'rm -rf /var/www/html/wp-content/themes/bharathcoudops' "$repository_root/scripts/manage.sh"; then
   printf 'Deployment success output must preserve the OCI readiness marker.\n' >&2
   exit 1
 fi
