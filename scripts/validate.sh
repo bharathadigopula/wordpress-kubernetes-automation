@@ -97,8 +97,9 @@ if ! grep -Fq 'name: prepare-wordpress-webroot' "$repository_root/templates/word
   ! grep -Fq 'mkdir -p /extensions/themes /extensions/plugins /nginx-cache' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'rm -f /var/www/html/wp-config.php' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq 'cp -R /usr/src/wordpress/wp-content/themes/. /extensions/themes/' "$repository_root/templates/wordpress-deployment.yaml" || \
-  grep -Fq '/usr/src/wordpress/wp-content/plugins/' "$repository_root/templates/wordpress-deployment.yaml" || \
-  grep -Fq 'subPath: object-cache.php' "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq 'cp -R /usr/src/wordpress/wp-content/plugins/redis-cache /extensions/plugins/redis-cache' "$repository_root/templates/wordpress-deployment.yaml" || \
+  ! grep -Fq 'cp /usr/src/wordpress/wp-content/plugins/redis-cache/includes/object-cache.php /extensions/object-cache.php' "$repository_root/templates/wordpress-deployment.yaml" || \
+  [[ "$(grep -Fc 'subPath: object-cache.php' "$repository_root/templates/wordpress-deployment.yaml")" != "2" ]] || \
   ! grep -Fq 'runAsUser: 0' "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq -- '- CHOWN' "$repository_root/templates/wordpress-deployment.yaml"; then
   printf 'WordPress deployment must prepare persistent core and extension directories.\n' >&2
@@ -139,7 +140,8 @@ if ! grep -Fq 'fastcgi_cache WORDPRESS;' "$repository_root/templates/nginx-confi
   ! grep -Fq 'fastcgi_cache_valid 200 60s;' "$repository_root/templates/nginx-configmap.yaml" || \
   ! grep -Fq "define('DISABLE_WP_CRON', true);" "$repository_root/templates/wordpress-deployment.yaml" || \
   ! grep -Fq "define('WP_REDIS_CLIENT', 'predis');" "$repository_root/templates/wordpress-deployment.yaml" || \
-  grep -Fq "activate_plugin(" "$repository_root/scripts/manage.sh"; then
+  ! grep -Fq "activate_plugin(\$cache_plugin)" "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'wp_using_ext_object_cache()' "$repository_root/scripts/manage.sh"; then
   printf 'WordPress must retain cache-safe dynamic performance controls.\n' >&2
   exit 1
 fi
@@ -176,10 +178,13 @@ if [[ "$(grep -Fc 'apply -f - >/dev/null' "$repository_root/scripts/manage.sh")"
   ! grep -Fq 'delete namespace "$legacy_namespace"' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'upgrade --install "$release" "$chart_root"' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'rollout status deployment/wordpress --timeout=10m >/dev/null' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'rollout status deployment/redis --timeout=10m >/dev/null' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "exec -i deployment/wordpress -c wordpress -- php >/dev/null" "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "define('WP_INSTALLING', true);" "$repository_root/scripts/manage.sh" || \
   ! grep -Fq '$new_install = !is_blog_installed();' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'wordpress_initialization=failed reason=installation_postcondition' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'wordpress_initialization=failed reason=object_cache_inactive' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'wordpress_initialization=failed reason=object_cache_unavailable' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "'^x-fastcgi-cache:[[:space:]]*HIT'" "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'wordpress_initialization=failed reason=active_theme_missing' "$repository_root/scripts/manage.sh" || \
   grep -Fq 'rm -rf /var/www/html/wp-content/themes/bharathcoudops' "$repository_root/scripts/manage.sh"; then
