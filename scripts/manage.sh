@@ -22,10 +22,10 @@ admin_user="${9:-wordpress-admin}"
 admin_email="${10:-wordpress@example.invalid}"
 restore_snapshot="${11:-latest}"
 operation_id="${12:-manual}"
-site_profile="${13:-{}}"
-database_secrets="${14:-}"
-backup_secrets="${15:-}"
-registry_secrets="${16:-}"
+site_profile_encoded="${13:-}${14:-}${15:-}${16:-}${17:-}${18:-}${19:-}${20:-}"
+database_secrets="${21:-}"
+backup_secrets="${22:-}"
+registry_secrets="${23:-}"
 kubeconfig=/etc/rancher/k3s/k3s.yaml
 k3s_version=v1.36.4+k3s1
 repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -50,7 +50,9 @@ if [[ ! "$hostname" =~ ^[a-z0-9.-]+$ ]] || \
   exit 2
 fi
 
-if ! jq -e '
+if [[ ! "$site_profile_encoded" =~ ^[A-Za-z0-9+/]+=*$ ]] || \
+  ! site_profile=$(printf '%s' "$site_profile_encoded" | base64 --decode 2>/dev/null) || \
+  ! jq -e '
   type == "object" and
   (.site_id | type == "string" and test("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")) and
   (.namespace | type == "string" and test("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")) and
