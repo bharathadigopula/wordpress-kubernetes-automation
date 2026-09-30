@@ -465,8 +465,16 @@ PHP
       --set-string backup.verify.id="$operation_id" \
       --set-string backup.verify.snapshot="$restore_snapshot" |
       "${kubectl_command[@]}" --namespace "$namespace" apply -f - >/dev/null
-    "${kubectl_command[@]}" --namespace "$namespace" wait --for=condition=complete \
-      "job/$verification_job" --timeout=30m >/dev/null
+    if ! "${kubectl_command[@]}" --namespace "$namespace" wait --for=condition=complete \
+      "job/$verification_job" --timeout=30m >/dev/null; then
+      "${kubectl_command[@]}" --namespace "$namespace" get "job/$verification_job" -o wide >&2 || true
+      "${kubectl_command[@]}" --namespace "$namespace" get pods \
+        --selector="job-name=$verification_job" -o wide >&2 || true
+      "${kubectl_command[@]}" --namespace "$namespace" describe "job/$verification_job" >&2 || true
+      "${kubectl_command[@]}" --namespace "$namespace" logs \
+        "job/$verification_job" --all-containers --tail=100 >&2 || true
+      exit 1
+    fi
     verification_output=$("${kubectl_command[@]}" --namespace "$namespace" logs \
       "job/$verification_job" --all-containers)
     grep -Fq 'wordpress_backup_verification=ready' <<< "$verification_output"

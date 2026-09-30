@@ -216,6 +216,8 @@ if ! grep -Fq 'wordpress-backup-before-restore-${operation_id}' "$repository_roo
   ! grep -Fq "if (!is_blog_installed())" "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'wordpress-backup-verify-${operation_id}' "$repository_root/scripts/manage.sh" || \
   [[ $(grep -Fc '"${kubectl_command[@]}" --namespace "$namespace" apply -f -' "$repository_root/scripts/manage.sh") != 2 ]] || \
+  ! grep -Fq 'describe "job/$verification_job" >&2 || true' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq '"job/$verification_job" --all-containers --tail=100 >&2 || true' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'wordpress_backup_verification=ready' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "find /var/cache/nginx/wordpress -mindepth 1 -delete" "$repository_root/scripts/manage.sh"; then
   printf 'Restore and deployment must preserve data and invalidate runtime caches.\n' >&2
