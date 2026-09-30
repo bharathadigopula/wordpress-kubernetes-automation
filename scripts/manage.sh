@@ -467,12 +467,12 @@ PHP
       "${kubectl_command[@]}" --namespace "$namespace" apply -f - >/dev/null
     if ! "${kubectl_command[@]}" --namespace "$namespace" wait --for=condition=complete \
       "job/$verification_job" --timeout=30m >/dev/null; then
-      "${kubectl_command[@]}" --namespace "$namespace" get "job/$verification_job" -o wide >&2 || true
+      "${kubectl_command[@]}" --namespace "$namespace" get "job/$verification_job" -o wide || true
       "${kubectl_command[@]}" --namespace "$namespace" get pods \
-        --selector="job-name=$verification_job" -o wide >&2 || true
-      "${kubectl_command[@]}" --namespace "$namespace" describe "job/$verification_job" >&2 || true
+        --selector="job-name=$verification_job" -o wide || true
+      "${kubectl_command[@]}" --namespace "$namespace" describe "job/$verification_job" || true
       "${kubectl_command[@]}" --namespace "$namespace" logs \
-        "job/$verification_job" --all-containers --tail=100 >&2 || true
+        "job/$verification_job" --all-containers --tail=100 || true
       exit 1
     fi
     verification_output=$("${kubectl_command[@]}" --namespace "$namespace" logs \
