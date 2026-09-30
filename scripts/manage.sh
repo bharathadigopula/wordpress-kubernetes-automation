@@ -464,7 +464,7 @@ PHP
       --set backup.verify.enabled=true \
       --set-string backup.verify.id="$operation_id" \
       --set-string backup.verify.snapshot="$restore_snapshot" |
-      "${kubectl_command[@]}" apply -f - >/dev/null
+      "${kubectl_command[@]}" --namespace "$namespace" apply -f - >/dev/null
     "${kubectl_command[@]}" --namespace "$namespace" wait --for=condition=complete \
       "job/$verification_job" --timeout=30m >/dev/null
     verification_output=$("${kubectl_command[@]}" --namespace "$namespace" logs \
@@ -490,7 +490,7 @@ PHP
       --set backup.restore.enabled=true \
       --set-string backup.restore.id="$operation_id" \
       --set-string backup.restore.snapshot="$restore_snapshot" |
-      "${kubectl_command[@]}" apply -f -
+      "${kubectl_command[@]}" --namespace "$namespace" apply -f -
     "${kubectl_command[@]}" --namespace "$namespace" wait --for=condition=complete "job/$restore_job" --timeout=30m
     "${kubectl_command[@]}" --namespace "$namespace" logs "job/$restore_job" --all-containers
     restore_application
