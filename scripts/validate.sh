@@ -40,7 +40,7 @@ fi
 # K3S PROVISIONING VALIDATION
 #==============================================================================
 
-grep -Fq 'site_profile="${13:-{}}"' "$repository_root/scripts/manage.sh"
+grep -Fq 'site_profile_encoded="${13:-}${14:-}${15:-}${16:-}${17:-}${18:-}${19:-}${20:-}"' "$repository_root/scripts/manage.sh"
 grep -Fq 'namespace=$(jq -r .namespace' "$repository_root/scripts/manage.sh"
 grep -Fq 'release=$(jq -r .release' "$repository_root/scripts/manage.sh"
 grep -Fq 'chart_root="$repository_root/.shared-chart/charts/wordpress"' "$repository_root/scripts/manage.sh"
