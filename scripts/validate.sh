@@ -40,8 +40,9 @@ fi
 # K3S PROVISIONING VALIDATION
 #==============================================================================
 
-grep -Fq 'namespace=ignitox' "$repository_root/scripts/manage.sh"
-grep -Fq 'legacy_namespace=wordpress' "$repository_root/scripts/manage.sh"
+grep -Fq 'site_profile="${13:-{}}"' "$repository_root/scripts/manage.sh"
+grep -Fq 'namespace=$(jq -r .namespace' "$repository_root/scripts/manage.sh"
+grep -Fq 'release=$(jq -r .release' "$repository_root/scripts/manage.sh"
 grep -Fq 'chart_root="$repository_root/.shared-chart/charts/wordpress"' "$repository_root/scripts/manage.sh"
 grep -Fq 'archive/refs/tags/${chart_ref}.tar.gz' "$repository_root/scripts/manage.sh"
 grep -Fq 'k3s_version=v1.36.4+k3s1' "$repository_root/scripts/manage.sh"
@@ -117,7 +118,8 @@ if ! grep -Fq 'claimName: wordpress-core' "$repository_root/templates/wordpress-
   exit 1
 fi
 
-if ! grep -Fq 'wordpress.siteTitle="$site_title"' "$repository_root/scripts/manage.sh" || \
+if ! grep -Fq -- '--values "$site_values_file"' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'wordpress.siteTitle="$site_title"' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'wordpress.adminUser="$admin_user"' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'wordpress.adminEmail="$admin_email"' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "getenv('WORDPRESS_SITE_TITLE')" "$repository_root/scripts/manage.sh"; then
@@ -175,11 +177,13 @@ if ! grep -Fq 'restic backup --tag wordpress /backup/database.sql /webroot /exte
   exit 1
 fi
 
-if [[ "$(grep -Fc 'apply -f - >/dev/null' "$repository_root/scripts/manage.sh")" != "4" ]] || \
+if [[ "$(grep -Fc 'apply -f - >/dev/null' "$repository_root/scripts/manage.sh")" != "6" ]] || \
   ! grep -Fq -- '--set imagePullSecrets[0].name=wordpress-registry >/dev/null' "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq 'uninstall "$release" --namespace "$legacy_namespace"' "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq 'delete namespace "$legacy_namespace"' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'upgrade --install "$release" "$chart_root"' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'validate_existing_claim_storage' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'retain_persistent_volumes' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'bharathcloudops.com/wordpress-site="$site_id"' "$repository_root/scripts/manage.sh" || \
+  grep -Fq 'delete namespace' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'rollout status deployment/wordpress --timeout=10m >/dev/null' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'rollout status deployment/redis --timeout=10m >/dev/null' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "exec -i deployment/wordpress -c wordpress -- php >/dev/null" "$repository_root/scripts/manage.sh" || \
@@ -205,6 +209,15 @@ if ! grep -Fq "create job --from=cronjob/wordpress-backup \"\$backup_job\" >/dev
   ! grep -Fq "wait --for=condition=complete \"job/\$backup_job\" --timeout=30m >/dev/null" "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "logs \"job/\$backup_job\" --all-containers --tail=8" "$repository_root/scripts/manage.sh"; then
   printf 'Backup success output must preserve the OCI readiness marker.\n' >&2
+  exit 1
+fi
+
+if ! grep -Fq 'wordpress-backup-before-restore-${operation_id}' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq "if (!is_blog_installed())" "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'wordpress-backup-verify-${operation_id}' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'wordpress_backup_verification=ready' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq "find /var/cache/nginx/wordpress -mindepth 1 -delete" "$repository_root/scripts/manage.sh"; then
+  printf 'Restore and deployment must preserve data and invalidate runtime caches.\n' >&2
   exit 1
 fi
 

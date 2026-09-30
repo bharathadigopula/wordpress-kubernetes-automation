@@ -22,19 +22,17 @@ admin_user="${9:-wordpress-admin}"
 admin_email="${10:-wordpress@example.invalid}"
 restore_snapshot="${11:-latest}"
 operation_id="${12:-manual}"
-database_secrets="${13:-}"
-backup_secrets="${14:-}"
-registry_secrets="${15:-}"
-namespace=ignitox
-release=wordpress
-legacy_namespace=wordpress
+site_profile="${13:-{}}"
+database_secrets="${14:-}"
+backup_secrets="${15:-}"
+registry_secrets="${16:-}"
 kubeconfig=/etc/rancher/k3s/k3s.yaml
 k3s_version=v1.36.4+k3s1
 repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 chart_root="$repository_root/.shared-chart/charts/wordpress"
 
 case "$action" in
-  validate|deploy|backup|restore|status)
+  validate|deploy|backup|verify-backup|restore|status)
     ;;
   *)
     printf 'Unsupported WordPress action: %s\n' "$action" >&2
@@ -51,6 +49,46 @@ if [[ ! "$hostname" =~ ^[a-z0-9.-]+$ ]] || \
   printf 'Invalid WordPress lifecycle inputs.\n' >&2
   exit 2
 fi
+
+if ! jq -e '
+  type == "object" and
+  (.site_id | type == "string" and test("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")) and
+  (.namespace | type == "string" and test("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")) and
+  (.release | type == "string" and test("^[a-z0-9]([a-z0-9-]{0,51}[a-z0-9])?$")) and
+  (.storage.class | type == "string" and test("^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$")) and
+  all(.storage.uploads, .storage.core, .storage.extensions, .storage.database; type == "string" and test("^[1-9][0-9]*(Mi|Gi)$")) and
+  (.php.memoryLimit | type == "string" and test("^[1-9][0-9]*M$")) and
+  (.php.uploadMaxFilesize | type == "string" and test("^[1-9][0-9]*M$")) and
+  (.php.postMaxSize | type == "string" and test("^[1-9][0-9]*M$")) and
+  all(.php.maxExecutionTime, .php.maxInputTime, .php.maxInputVars, .php.opcacheInternedStringsBuffer, .php.opcacheMaxAcceleratedFiles, .php.opcacheMemoryConsumption; type == "number" and . > 0) and
+  (.wordpress.memoryLimit | type == "string" and test("^[1-9][0-9]*M$")) and
+  (.wordpress.maxMemoryLimit | type == "string" and test("^[1-9][0-9]*M$")) and
+  all(.wordpress.autosaveInterval, .wordpress.postRevisions, .wordpress.emptyTrashDays; type == "number" and . >= 0) and
+  (.nginx.clientMaxBodySize | type == "string" and test("^[1-9][0-9]*m$")) and
+  (.backup.tag | type == "string" and test("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")) and
+  (.backup.schedule | type == "string" and length > 0 and (contains("\\n") | not)) and
+  all(.backup.daily, .backup.weekly, .backup.monthly; type == "number" and . > 0)
+' <<< "$site_profile" >/dev/null; then
+  printf 'Invalid WordPress site profile.\n' >&2
+  exit 2
+fi
+
+site_id=$(jq -r .site_id <<< "$site_profile")
+namespace=$(jq -r .namespace <<< "$site_profile")
+release=$(jq -r .release <<< "$site_profile")
+storage_class=$(jq -r .storage.class <<< "$site_profile")
+site_values_file=$(mktemp)
+trap 'rm -f "$site_values_file"' EXIT
+jq '{
+  wordpress: {
+    persistence: {storageClass: .storage.class, size: .storage.uploads, coreSize: .storage.core, extensionsSize: .storage.extensions},
+    configuration: .wordpress,
+    php: .php
+  },
+  nginx: {clientMaxBodySize: .nginx.clientMaxBodySize},
+  mariadb: {persistence: {storageClass: .storage.class, size: .storage.database}},
+  backup: {enabled: true, tag: .backup.tag, schedule: .backup.schedule, retention: {daily: .backup.daily, weekly: .backup.weekly, monthly: .backup.monthly}}
+}' <<< "$site_profile" > "$site_values_file"
 
 #==============================================================================
 # KUBERNETES AND HELM COMMANDS
@@ -215,12 +253,56 @@ validate_runtime() {
 
 helm_values=(
   --namespace "$namespace"
+  --values "$site_values_file"
   --set-string ingress.hostname="$hostname"
   --set-string wordpress.siteTitle="$site_title"
   --set-string wordpress.adminUser="$admin_user"
   --set-string wordpress.adminEmail="$admin_email"
-  --set backup.enabled=true
 )
+
+#==============================================================================
+# PERSISTENT STORAGE SAFETY
+#==============================================================================
+
+ensure_retained_storage_class() {
+  cat <<'STORAGE_CLASS' | "${kubectl_command[@]}" apply -f - >/dev/null
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path-retain
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: rancher.io/local-path
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+STORAGE_CLASS
+}
+
+validate_existing_claim_storage() {
+  local claim_name
+  local existing_storage_class
+
+  for claim_name in wordpress-core wordpress-uploads wordpress-extensions data-mariadb-0; do
+    existing_storage_class=$("${kubectl_command[@]}" --namespace "$namespace" get pvc "$claim_name" -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
+    if [[ -n "$existing_storage_class" && "$existing_storage_class" != "$storage_class" ]]; then
+      printf 'PVC %s uses storage class %s; refusing immutable change to %s.\n' "$claim_name" "$existing_storage_class" "$storage_class" >&2
+      exit 1
+    fi
+  done
+}
+
+retain_persistent_volumes() {
+  local claim_name
+  local volume_name
+
+  for claim_name in wordpress-core wordpress-uploads wordpress-extensions data-mariadb-0; do
+    volume_name=$("${kubectl_command[@]}" --namespace "$namespace" get pvc "$claim_name" -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)
+    if [[ -n "$volume_name" ]]; then
+      "${kubectl_command[@]}" patch persistentvolume "$volume_name" --type merge \
+        --patch '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}' >/dev/null
+    fi
+  done
+}
 
 #==============================================================================
 # SECRET RECONCILIATION
@@ -272,13 +354,11 @@ case "$action" in
       exit 2
     fi
     install_helm
-    if "${helm_command[@]}" status "$release" --namespace "$legacy_namespace" >/dev/null 2>&1; then
-      "${helm_command[@]}" uninstall "$release" --namespace "$legacy_namespace" --wait --timeout 10m
-    fi
-    if "${kubectl_command[@]}" get namespace "$legacy_namespace" >/dev/null 2>&1; then
-      "${kubectl_command[@]}" delete namespace "$legacy_namespace" --wait=true --timeout=10m
-    fi
+    ensure_retained_storage_class
+    validate_existing_claim_storage
     reconcile_secrets
+    "${kubectl_command[@]}" label namespace "$namespace" \
+      bharathcloudops.com/wordpress-site="$site_id" --overwrite >/dev/null
     "${helm_command[@]}" upgrade --install "$release" "$chart_root" \
       "${helm_values[@]}" --create-namespace --atomic --cleanup-on-fail --wait \
       --timeout 15m --history-max 10 \
@@ -286,6 +366,7 @@ case "$action" in
       --set-string wordpress.image.tag="$image_tag" \
       --set-string wordpress.image.digest="$image_digest" \
       --set imagePullSecrets[0].name=wordpress-registry >/dev/null
+    retain_persistent_volumes
     "${kubectl_command[@]}" --namespace "$namespace" rollout status deployment/wordpress --timeout=10m >/dev/null
     "${kubectl_command[@]}" --namespace "$namespace" rollout status deployment/redis --timeout=10m >/dev/null
     "${kubectl_command[@]}" --namespace "$namespace" exec -i deployment/wordpress -c wordpress -- php >/dev/null <<'PHP'
@@ -356,6 +437,8 @@ if ($new_install) {
     }
     wp_cache_delete($cache_key, 'wordpress-platform');
 PHP
+    "${kubectl_command[@]}" --namespace "$namespace" exec deployment/wordpress -c nginx -- \
+      sh -c 'find /var/cache/nginx/wordpress -mindepth 1 -delete'
     curl --fail --silent --show-error --dump-header /dev/null --output /dev/null "https://$hostname/"
     cache_headers=$(curl --fail --silent --show-error --dump-header - --output /dev/null "https://$hostname/")
     if ! grep -Eiq '^x-fastcgi-cache:[[:space:]]*HIT' <<< "$cache_headers"; then
@@ -372,7 +455,25 @@ PHP
     printf 'wordpress_backup=ready\n'
     printf '%s\n' "$backup_output"
     ;;
+  verify-backup)
+    verification_job="wordpress-backup-verify-${operation_id}"
+    "${helm_command[@]}" template "$release" "$chart_root" "${helm_values[@]}" \
+      --show-only templates/backup-verify-job.yaml \
+      --set backup.verify.enabled=true \
+      --set-string backup.verify.id="$operation_id" \
+      --set-string backup.verify.snapshot="$restore_snapshot" |
+      "${kubectl_command[@]}" apply -f - >/dev/null
+    "${kubectl_command[@]}" --namespace "$namespace" wait --for=condition=complete \
+      "job/$verification_job" --timeout=30m >/dev/null
+    verification_output=$("${kubectl_command[@]}" --namespace "$namespace" logs \
+      "job/$verification_job" --all-containers)
+    grep -Fq 'wordpress_backup_verification=ready' <<< "$verification_output"
+    printf 'wordpress_verify-backup=ready\n'
+    ;;
   restore)
+    pre_restore_job="wordpress-backup-before-restore-${operation_id}"
+    "${kubectl_command[@]}" --namespace "$namespace" create job --from=cronjob/wordpress-backup "$pre_restore_job" >/dev/null
+    "${kubectl_command[@]}" --namespace "$namespace" wait --for=condition=complete "job/$pre_restore_job" --timeout=30m >/dev/null
     restore_job="wordpress-restore-${operation_id}"
     replicas=$("${kubectl_command[@]}" --namespace "$namespace" get deployment wordpress -o jsonpath='{.spec.replicas}')
     restore_application() {
@@ -393,6 +494,14 @@ PHP
     restore_application
     trap - EXIT
     "${kubectl_command[@]}" --namespace "$namespace" rollout status deployment/wordpress --timeout=10m
+    "${kubectl_command[@]}" --namespace "$namespace" exec -i deployment/wordpress -c wordpress -- php >/dev/null <<'PHP'
+<?php
+require '/var/www/html/wp-load.php';
+if (!is_blog_installed()) {
+    exit(1);
+}
+PHP
+    curl --fail --silent --show-error --output /dev/null "https://$hostname/"
     printf 'wordpress_restore=ready\n'
     ;;
   status)
