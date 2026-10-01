@@ -218,6 +218,7 @@ if ! grep -Fq 'wordpress-backup-before-restore-${operation_id}' "$repository_roo
   ! grep -Fq "if (!is_blog_installed())" "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'wordpress-backup-verify-${operation_id}' "$repository_root/scripts/manage.sh" || \
   [[ $(grep -Fc '"${kubectl_command[@]}" --namespace "$namespace" apply -f -' "$repository_root/scripts/manage.sh") != 2 ]] || \
+  ! grep -Fq 'Failed=True' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'describe "job/$verification_job" || true' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq '"job/$verification_job" --all-containers --tail=100 || true' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'wordpress_backup_verification=ready' "$repository_root/scripts/manage.sh" || \

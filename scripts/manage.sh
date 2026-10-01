@@ -485,8 +485,17 @@ PHP
       --set-string backup.verify.id="$operation_id" \
       --set-string backup.verify.snapshot="$restore_snapshot" |
       "${kubectl_command[@]}" --namespace "$namespace" apply -f - >/dev/null
-    if ! "${kubectl_command[@]}" --namespace "$namespace" wait --for=condition=complete \
-      "job/$verification_job" --timeout=30m >/dev/null; then
+    verification_deadline=$((SECONDS + 1800))
+    verification_state=""
+    while (( SECONDS < verification_deadline )); do
+      verification_state=$("${kubectl_command[@]}" --namespace "$namespace" get "job/$verification_job" \
+        -o jsonpath='{range .status.conditions[*]}{.type}={.status}{" "}{end}' 2>/dev/null || true)
+      if [[ "$verification_state" == *"Complete=True"* || "$verification_state" == *"Failed=True"* ]]; then
+        break
+      fi
+      sleep 5
+    done
+    if [[ "$verification_state" != *"Complete=True"* ]]; then
       "${kubectl_command[@]}" --namespace "$namespace" get "job/$verification_job" -o wide || true
       "${kubectl_command[@]}" --namespace "$namespace" get pods \
         --selector="job-name=$verification_job" -o wide || true
