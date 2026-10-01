@@ -181,6 +181,8 @@ if [[ "$(grep -Fc 'apply -f - >/dev/null' "$repository_root/scripts/manage.sh")"
   ! grep -Fq -- '--set imagePullSecrets[0].name=wordpress-registry >/dev/null' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'upgrade --install "$release" "$chart_root"' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'validate_existing_claim_storage' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'preserve_mariadb_storage_template' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq '.mariadb.persistence.storageClass = ""' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'retain_persistent_volumes' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'bharathcloudops.com/wordpress-site="$site_id"' "$repository_root/scripts/manage.sh" || \
   grep -Fq 'delete namespace' "$repository_root/scripts/manage.sh" || \

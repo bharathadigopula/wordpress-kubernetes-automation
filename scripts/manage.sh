@@ -293,6 +293,25 @@ validate_existing_claim_storage() {
   done
 }
 
+preserve_mariadb_storage_template() {
+  local statefulset_json
+  local template_storage_class
+
+  statefulset_json=$("${kubectl_command[@]}" --namespace "$namespace" get statefulset mariadb -o json --ignore-not-found)
+  [[ -n "$statefulset_json" ]] || return 0
+  template_storage_class=$(jq -r '.spec.volumeClaimTemplates[0].spec.storageClassName // ""' <<< "$statefulset_json")
+
+  if [[ -z "$template_storage_class" ]]; then
+    jq '.mariadb.persistence.storageClass = ""' "$site_values_file" > "$site_values_file.updated"
+    chmod 600 "$site_values_file.updated"
+    mv "$site_values_file.updated" "$site_values_file"
+  elif [[ "$template_storage_class" != "$storage_class" ]]; then
+    printf 'MariaDB StatefulSet storage class %s conflicts with profile %s; refusing immutable change.\n' \
+      "$template_storage_class" "$storage_class" >&2
+    exit 1
+  fi
+}
+
 retain_persistent_volumes() {
   local claim_name
   local volume_name
@@ -358,6 +377,7 @@ case "$action" in
     install_helm
     ensure_retained_storage_class
     validate_existing_claim_storage
+    preserve_mariadb_storage_template
     reconcile_secrets
     "${kubectl_command[@]}" label namespace "$namespace" \
       bharathcloudops.com/wordpress-site="$site_id" --overwrite >/dev/null
